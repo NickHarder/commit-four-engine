@@ -1,0 +1,11 @@
+{
+  "name": "@commit-four/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Rules, AI, calendar mapping and render planning for Commit Four.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
