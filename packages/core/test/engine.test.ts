@@ -1,0 +1,150 @@
+import { describe, expect, it } from "vitest";
+import { GameEngine } from "../src/engine";
+import { initialState, SENTINEL_FILE, STATE_PATH } from "../src/state";
+import { ApiWriter, ConflictError } from "../src/writer";
+import { FakeGitHub } from "./fakeGitHub";
+
+const OWNER = "NickHarder";
+const author = { name: "Nick Harder", email: "29993711+NickHarder@users.noreply.github.com" };
+const now = () => new Date("2026-10-07T12:00:00Z");
+const sentinel = JSON.stringify({ commitFour: 1, owner: OWNER, boardId: "test" });
+
+function setup(files: Record<string, string> = {}) {
+  const gh = new FakeGitHub(OWNER, "my-board", {
+    [SENTINEL_FILE]: sentinel,
+    [STATE_PATH]: JSON.stringify(initialState(OWNER, now())),
+    ...files,
+  });
+  const writer = new ApiWriter({
+    owner: OWNER,
+    repo: "my-board",
+    token: "t",
+    fetch: gh.fetch,
+    minIntervalMs: 0,
+  });
+  const events: string[] = [];
+  const engine = new GameEngine({
+    writer,
+    owner: OWNER,
+    pieceAuthor: author,
+    now,
+    chooser: (moves) => [3, 2, 4, 1, 5, 0, 6].find((c) => moves.filter((m) => m === c).length < 6)!,
+    onEvent: (e) => events.push(e.type),
+  });
+  return { gh, writer, engine, events };
+}
+
+function countsByDate(gh: FakeGitHub, email: string): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const c of gh.history()) {
+    if (c.author.email !== email) continue;
+    const day = c.author.date.slice(0, 10);
+    out[day] = (out[day] ?? 0) + 1;
+  }
+  return out;
+}
+
+describe("GameEngine + ApiWriter", () => {
+  it("writes one atomic turn: anchor, 4 human + 2 AI empty commits, then a state commit", async () => {
+    const { gh, engine } = setup();
+    await engine.load();
+    const start = await engine.newGame({ difficulty: "casual", humanFirst: true });
+    await start.written;
+    const turn = await engine.move(1, 0, 3);
+    expect(turn.aiCol).toBe(3);
+    await turn.written;
+
+    expect(countsByDate(gh, author.email)).toEqual({ "2016-01-01": 4, "2016-02-06": 4, "2016-02-05": 2 });
+    const history = gh.history();
+    const pieces = history.filter((c) => c.author.email === author.email);
+    expect(pieces.every((c) => c.author.date.endsWith("T12:00:00+00:00"))).toBe(true);
+    // piece commits are empty: same tree as their parent
+    for (const c of pieces) expect(gh.commits.get(c.parents[0]!)!.tree).toBe(c.tree);
+    expect(history.at(-1)!.author.email).toBe("engine@commit-four.invalid");
+    const state = JSON.parse(gh.file(STATE_PATH)!);
+    expect(state.games[0].moves).toBe("44");
+    expect(gh.file("board.svg")).toContain("<svg");
+  });
+
+  it("coalesces moves made while a write is in flight and stays idempotent on reload", async () => {
+    const { gh, engine } = setup();
+    await engine.load();
+    await (await engine.newGame({ difficulty: "casual", humanFirst: true })).written;
+    const t1 = await engine.move(1, 0, 0);
+    const t2 = await engine.move(1, 2, 6);
+    await Promise.all([t1.written, t2.written]);
+    const before = gh.history().length;
+    // a fresh engine sees the same state and has nothing to write
+    const { engine: again } = {
+      engine: new GameEngine({
+        writer: new ApiWriter({
+          owner: OWNER,
+          repo: "my-board",
+          token: "t",
+          fetch: gh.fetch,
+          minIntervalMs: 0,
+        }),
+        owner: OWNER,
+        pieceAuthor: author,
+        now,
+      }),
+    };
+    await again.load();
+    expect(again.current().games[0]!.moves).toBe(engine.current().games[0]!.moves);
+    expect(gh.history().length).toBe(before);
+  });
+
+  it("retries after an unrelated push, and resyncs when the remote game diverged", async () => {
+    const { gh, engine, events } = setup();
+    await engine.load();
+    await (await engine.newGame({ difficulty: "casual", humanFirst: true })).written;
+    gh.externalPush({ "README.md": "edited elsewhere" });
+    await (await engine.move(1, 0, 3)).written; // conflict on head, retried against the new head
+    expect(JSON.parse(gh.file(STATE_PATH)!).games[0].moves).toBe("44");
+
+    // another client plays a different move in the same game
+    const other = JSON.parse(gh.file(STATE_PATH)!);
+    other.games[0].moves = "4411";
+    gh.externalPush({ [STATE_PATH]: JSON.stringify(other) });
+    const t = await engine.move(1, 2, 6);
+    await expect(t.written).rejects.toBeInstanceOf(ConflictError);
+    expect(events).toContain("resynced");
+    expect(engine.current().games[0]!.moves).toBe("4411");
+  });
+
+  it("refuses repos without a matching sentinel", async () => {
+    const gh = new FakeGitHub(OWNER, "real-project", { "README.md": "my real code" });
+    const engine = new GameEngine({
+      writer: new ApiWriter({ owner: OWNER, repo: "real-project", token: "t", fetch: gh.fetch }),
+      owner: OWNER,
+      pieceAuthor: author,
+    });
+    await expect(engine.load()).rejects.toThrow(/sentinel/);
+    const stranger = setup({
+      [SENTINEL_FILE]: JSON.stringify({ commitFour: 1, owner: "someone-else", boardId: "x" }),
+    });
+    await expect(stranger.engine.load()).rejects.toThrow(/belongs to someone-else/);
+  });
+
+  it("enforces the hourly request budget", async () => {
+    const gh = new FakeGitHub(OWNER, "my-board", { [SENTINEL_FILE]: sentinel });
+    const writer = new ApiWriter({
+      owner: OWNER,
+      repo: "my-board",
+      token: "t",
+      fetch: gh.fetch,
+      minIntervalMs: 0,
+      hourlyLimit: 5,
+    });
+    const remote = await writer.readState();
+    await expect(
+      writer.write({
+        batches: [{ date: "2016-01-01", count: 4, kind: "anchor", message: "a" }],
+        pieceAuthor: author,
+        files: [],
+        message: "s",
+        expectedHead: remote.head,
+      }),
+    ).rejects.toThrow(/hourly write budget/);
+  });
+});

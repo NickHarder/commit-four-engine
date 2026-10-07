@@ -1,0 +1,23 @@
+{
+  "name": "commit-four",
+  "version": "0.1.0",
+  "description": "Play Connect 4 against an AI on your own GitHub contribution graph.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "commit-four": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "esbuild src/cli.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/cli.js --banner:js='#!/usr/bin/env node' --log-level=warning"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@commit-four/core": "*"
+  }
+}

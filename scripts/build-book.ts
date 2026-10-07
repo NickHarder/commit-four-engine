@@ -6,14 +6,14 @@
  * The script is bundled with esbuild first so worker threads run plain JS.
  * Output: packages/core/src/book/perfect-book.json
  */
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { availableParallelism } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isMainThread, parentPort, Worker } from "node:worker_threads";
 import { perfectMove } from "../packages/core/src/ai";
 import { Position, WIDTH } from "../packages/core/src/board";
-import { canonicalEntry } from "../packages/core/src/book";
+import { canonicalEntry, OpeningBook } from "../packages/core/src/book";
 import { Solver } from "../packages/core/src/solver";
 
 export const BOOK_POLICY = "perfect-v1";
@@ -42,6 +42,12 @@ async function main(): Promise<void> {
   const workers = Array.from({ length: workerCount }, () => new Worker(fileURLToPath(import.meta.url)));
   const entries = new Map<number, number>();
   const log = (msg: string) => console.log(`[${new Date().toISOString()}] ${msg}`);
+  // resume: keep entries from an earlier (possibly interrupted) run with the same policy
+  if (existsSync(OUT)) {
+    const prev = JSON.parse(readFileSync(OUT, "utf8")) as { policy: string; entries: [number, number][] };
+    if (prev.policy === BOOK_POLICY) for (const [k, c] of prev.entries) entries.set(k, c);
+    log(`resuming with ${entries.size} existing entries`);
+  }
 
   // Theory (Allen/Allis 1988): the first player wins only by opening in the center.
   const empty = new Position();
@@ -53,6 +59,8 @@ async function main(): Promise<void> {
     let frontier: number[][] = humanFirst ? [[]] : [[3]];
     while (frontier.length > 0) {
       const aiToMove = new Map<number, number[]>();
+      const resumed: number[][] = [];
+      const known = new OpeningBook({ version: 1, policy: BOOK_POLICY, entries: [...entries] });
       for (const moves of frontier) {
         const p = Position.fromMoves(moves);
         for (let c = 0; c < WIDTH; c++) {
@@ -61,16 +69,20 @@ async function main(): Promise<void> {
           if (child.length > maxStones) continue;
           const cp = Position.fromMoves(child);
           const key = Math.min(cp.key(), cp.mirrorKey());
-          if (!entries.has(key) && !aiToMove.has(key)) aiToMove.set(key, child);
+          if (entries.has(key)) {
+            // answered in an earlier run: still expand it (its mirror may not have been)
+            const col = known.lookup(cp)!;
+            if (!cp.isWinningMove(col)) resumed.push([...child, col]);
+          } else if (!aiToMove.has(key)) aiToMove.set(key, child);
         }
       }
-      if (aiToMove.size === 0) break;
-      const stones = [...aiToMove.values()][0]!.length;
+      if (aiToMove.size === 0 && resumed.length === 0) break;
+      const stones = ([...aiToMove.values()][0] ?? resumed[0]!.slice(0, -1)).length;
       log(
         `${humanFirst ? "human-first" : "ai-first"}: solving ${aiToMove.size} positions with ${stones} stones`,
       );
       const results = await solveAll([...aiToMove.values()], workers, log);
-      const next: number[][] = [];
+      const next: number[][] = dedupe(resumed);
       for (const r of results) {
         const pos = Position.fromMoves(r.moves);
         entries.set(...canonicalEntry(pos, r.col));
@@ -115,6 +127,16 @@ async function solveAll(
   );
   for (const w of workers) w.removeAllListeners("message");
   return results;
+}
+
+function dedupe(lines: number[][]): number[][] {
+  const seen = new Map<number, number[]>();
+  for (const l of lines) {
+    const p = Position.fromMoves(l);
+    const key = Math.min(p.key(), p.mirrorKey());
+    if (!seen.has(key)) seen.set(key, l);
+  }
+  return [...seen.values()];
 }
 
 function writeBook(entries: Map<number, number>): void {
