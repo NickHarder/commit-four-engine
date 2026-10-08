@@ -14,6 +14,7 @@ import { createInterface } from "node:readline/promises";
 import {
   boardFiles,
   currentGame,
+  DEFAULT_SEASON,
   DIFFICULTIES,
   type Difficulty,
   GameEngine,
@@ -36,6 +37,7 @@ import {
 import { type Check, printChecks, runDoctor } from "./doctor";
 import { GitWriter, git } from "./git";
 import { resolveIdentity } from "./identity";
+import { FORK_HELP, originRepo, repoInfo } from "./repo";
 import { createHelperServer, type WriteStatus } from "./server";
 
 const VERSION = "0.1.0";
@@ -86,11 +88,31 @@ async function init(args: Args): Promise<void> {
   const m = spec ? /^([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+)$/.exec(spec) : null;
   if (!m) throw new Error("usage: commit-four init <owner>/<repo> [--create] [--email you@example.com]");
   const [, owner, repo] = m as unknown as [string, string, string];
+  await initBoard(owner, repo, args);
+}
+
+/** `commit-four setup`: make the repo you're standing in (a "Use this template" copy) your board. */
+async function setup(args: Args): Promise<void> {
+  const board = flag(args, "board");
+  if (board) {
+    await init({ ...args, positional: [board] });
+    return;
+  }
+  const ref = await originRepo();
+  if (!ref) {
+    throw new Error(
+      "couldn't find a GitHub `origin` remote here. Run this inside a clone of your copy of Commit Four, or pass --board <you>/<repo>.",
+    );
+  }
+  console.log(`setting up github.com/${ref.owner}/${ref.repo} as your Commit Four board ...`);
+  await initBoard(ref.owner, ref.repo, args);
+}
+
+async function initBoard(owner: string, repo: string, args: Args): Promise<void> {
   const branch = flag(args, "branch") ?? "main";
   const author = await resolveIdentity(owner, { email: flag(args, "email"), name: flag(args, "name") });
   if (args.flags.has("create")) {
     console.log(`creating github.com/${owner}/${repo} with gh ...`);
-    await git(".", ["--version"]);
     const { execFile } = await import("node:child_process");
     await new Promise<void>((resolve, reject) =>
       execFile(
@@ -108,6 +130,9 @@ async function init(args: Args): Promise<void> {
       ),
     );
   }
+  const info = await repoInfo({ owner, repo });
+  if (info?.fork)
+    throw new Error(`${owner}/${repo} is a fork${info.parent ? ` of ${info.parent}` : ""}.\n${FORK_HELP}`);
   const dir = join(homeDir(), "repos", owner, `${repo}.git`);
   if (!existsSync(dir)) {
     await mkdir(dirname(dir), { recursive: true });
@@ -123,12 +148,12 @@ async function init(args: Args): Promise<void> {
     const remote = await writer.readState({ refresh: true });
     if (!remote.sentinel) {
       throw new Error(
-        `${owner}/${repo} isn't a Commit Four board (no .commit-four-board file). Use an empty repo or one created from the board template; Commit Four never writes to other repos.`,
+        `${owner}/${repo} isn't a Commit Four board (no .commit-four-board file). Use an empty repo or a "Use this template" copy of Commit Four; it never writes to other repos.`,
       );
     }
     if (remote.sentinel.owner === UNCLAIMED_OWNER) {
-      console.log("claiming the template board for you ...");
-      await engineFor(board, writer).claim();
+      console.log("claiming the board for you ...");
+      await engineFor(board, writer).claim(`${owner}/${repo}`);
     } else if (remote.sentinel.owner.toLowerCase() !== owner.toLowerCase()) {
       throw new Error(`this board belongs to ${remote.sentinel.owner}`);
     }
@@ -137,13 +162,16 @@ async function init(args: Args): Promise<void> {
   config.boards[`${owner}/${repo}`] = board;
   config.current = `${owner}/${repo}`;
   await saveConfig(config);
-  console.log(`\nBoard ready: github.com/${owner}/${repo}
+  console.log(`
+Board ready: github.com/${owner}/${repo}
 Piece commits will be authored as ${author.email}.
-
+${info?.private ? "\nThis repo is private: turn on Settings > Public profile > 'Include private contributions' or the board won't show.\n" : ""}
 Next:
-  commit-four serve    # then open your profile with the Commit Four extension installed
-  commit-four play     # or play right here in the terminal
-  commit-four doctor   # check visibility settings`);
+  1. Load the extension: chrome://extensions > Developer mode > Load unpacked > packages/extension/build
+  2. Start the helper and paste its pairing token into the extension:  npm run serve
+  3. Open ${seasonProfileUrl(owner, DEFAULT_SEASON)} and click "New game"
+     (or play in the terminal:  npm run play)
+Check visibility settings any time with:  npm run doctor`);
 }
 
 async function serve(args: Args): Promise<void> {
@@ -306,7 +334,8 @@ async function pair(args: Args): Promise<void> {
 
 const HELP = `commit-four ${VERSION} — Connect 4 on your GitHub contribution graph
 
-  init <owner>/<repo> [--create] [--private] [--email e]   set up a board repo (empty, or from the template)
+  setup [--board <owner>/<repo>]                           make this repo (your "Use this template" copy) your board
+  init <owner>/<repo> [--create] [--private] [--email e]   set up a separate, empty board repo
   serve [--port ${47474}]                                   local helper for the browser extension
   play [--difficulty casual|hard|perfect] [--ai-first]      play in the terminal
   status                                                    show the current game
@@ -316,7 +345,15 @@ const HELP = `commit-four ${VERSION} — Connect 4 on your GitHub contribution g
 
 export async function main(argv = process.argv.slice(2)): Promise<void> {
   const args = parseArgs(argv);
-  const commands: Record<string, (a: Args) => Promise<void>> = { init, serve, play, status, doctor, pair };
+  const commands: Record<string, (a: Args) => Promise<void>> = {
+    setup,
+    init,
+    serve,
+    play,
+    status,
+    doctor,
+    pair,
+  };
   const run = commands[args.command];
   if (!run) {
     console.log(HELP);

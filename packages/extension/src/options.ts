@@ -91,7 +91,7 @@ claimButton.addEventListener("click", async () => {
   if (!s?.author) return;
   try {
     say("Claiming the board…");
-    await engine(s).claim();
+    await engine(s).claim(`${s.owner}/${s.repo}`);
     claimButton.hidden = true;
     say(`Board claimed for ${s.owner}. Open your profile to play.`);
   } catch (e) {
@@ -137,6 +137,16 @@ function engine(s: Settings): GameEngine {
 }
 
 async function testApi(s: Settings): Promise<void> {
+  const repo = await fetch(`https://api.github.com/repos/${s.owner}/${s.repo}`, {
+    headers: { Authorization: `Bearer ${s.pat}`, Accept: "application/vnd.github+json" },
+  });
+  if (repo.status === 404)
+    throw new Error(`Can't see ${s.owner}/${s.repo} with this token. Give it access to that repo.`);
+  if (repo.ok && ((await repo.json()) as { fork: boolean }).fork) {
+    throw new Error(
+      `${s.owner}/${s.repo} is a fork, and GitHub never counts commits in forks. Make a standalone copy with "Use this template" instead, or use an empty repo.`,
+    );
+  }
   try {
     const state = await engine(s).load(true);
     say(

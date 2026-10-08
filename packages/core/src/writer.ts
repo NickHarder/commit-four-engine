@@ -1,7 +1,7 @@
 /**
  * Writers turn a render plan into commits in the board repo. Every write is one atomic ref
  * update, never a force push. Piece commits are empty commits authored by the owner on the
- * board day (noon UTC); the final commit updates state/game.json + board.svg and is authored by
+ * board day (noon UTC); the final commit updates state/game.json + state/board.svg and is authored by
  * ENGINE_AUTHOR, whose reserved `.invalid` email never counts as a contribution.
  */
 
@@ -38,6 +38,8 @@ export interface Sentinel {
   commitFour: 1;
   owner: string;
   boardId: string;
+  /** Set only in the source template repo: "owner/name" of the repo that must never be claimed. */
+  upstream?: string;
 }
 
 export interface BoardWriter {
@@ -61,13 +63,16 @@ export class GitHubApiError extends Error {
   }
 }
 
+export const REPO_SLUG = /^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/;
+
 export function parseSentinel(text: string): Sentinel {
   const json = JSON.parse(text) as Partial<Sentinel>;
   if (
     json.commitFour !== 1 ||
     typeof json.owner !== "string" ||
     typeof json.boardId !== "string" ||
-    !/^[A-Za-z0-9-]{0,39}$/.test(json.owner)
+    !/^[A-Za-z0-9-]{0,39}$/.test(json.owner) ||
+    (json.upstream !== undefined && (typeof json.upstream !== "string" || !REPO_SLUG.test(json.upstream)))
   ) {
     throw new Error(`${SENTINEL_FILE} is not a Commit Four sentinel`);
   }

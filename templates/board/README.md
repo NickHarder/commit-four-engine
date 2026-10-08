@@ -3,7 +3,7 @@
 This repository is a **game board**, not a project. the owner plays Connect 4 against an AI on their
 GitHub contribution graph, and every piece on the graph is a handful of backdated, empty commits here.
 
-![Current game](board.svg)
+![Current game](state/board.svg)
 
 | Square | Meaning |
 |---|---|

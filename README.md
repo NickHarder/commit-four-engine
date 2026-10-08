@@ -35,23 +35,46 @@ a vanity metric anyway; this makes the point with style.
 - **AI.** Casual, Hard (8-ply search) or Perfect (opening book plus an exact solver; it never gives
   away a won or drawn position). Connect 4 is solved: if Perfect moves first you can't win.
 
-## Quick start
+## Make your own
 
-1. **Create your board repo**: use the board template (`templates/board/`, published as a template
-   repo), or run `npx commit-four init <you>/<board-repo> --create` (needs the `gh` CLI).
-2. **Install the extension**: `npm run build -w @commit-four/extension`, then load
-   `packages/extension/build` unpacked at `chrome://extensions` (Web Store listing pending).
-3. **Connect it**: in the extension settings choose *Local helper* (run `npx commit-four serve`,
-   paste its pairing token) or *Browser only* (paste a fine-grained token). Template boards get
-   claimed with one click.
+You need Node 22+, git, and Chrome.
+
+1. **Copy the repo**: on GitHub click **Use this template** → **Create a new repository** (public).
+   Your copy holds the code *and* becomes your board.
+2. **Set it up**, in a clone of your copy:
+   ```sh
+   git clone https://github.com/<you>/<your-copy> && cd <your-copy>
+   npm install
+   npm run setup     # builds everything and claims this repo as your board
+   npm run serve     # local helper; prints a pairing token
+   ```
+3. **Load the extension**: `chrome://extensions` → Developer mode → **Load unpacked** →
+   `packages/extension/build`. In its settings choose *Local helper* and paste the pairing token.
 4. **Play**: open `https://github.com/<you>?tab=overview&from=2016-12-01&to=2016-12-31` and click
-   *New game*. No browser? `npx commit-four play` plays in the terminal.
-5. `npx commit-four doctor` checks the things that can hide your board, such as a private profile.
+   **New game**. No browser? `npm run play` plays in the terminal.
+
+`npm run doctor` checks the things that can hide your board, such as a private profile.
+
+### Why "Use this template" and not Fork?
+
+**GitHub never counts commits made in a fork toward your contribution graph** (that's GitHub's rule,
+not ours), so a fork can't be a board. "Use this template" gives you the same copy of the code as a
+standalone repo, and its commits count. If you already forked, keep the fork for the code and give the
+game its own empty repo: `node packages/cli/dist/cli.js init <you>/commit-four-board --create`
+(or create the empty repo on github.com and drop `--create`). Both `setup` and the extension detect
+forks and say so.
+
+### Browser only (no terminal)
+
+Instead of `npm run serve`, pick *Browser only* in the extension settings and paste a
+[fine-grained token](https://github.com/settings/personal-access-tokens/new) limited to your copy with
+**Contents: Read and write**. A copy that hasn't been set up gets a one-click **Claim this board** button.
 
 ## Safety
 
-- Writes only to repos containing a `.commit-four-board` sentinel that names you; template boards
-  are claimed once. Never force-pushes; every write is one atomic ref update.
+- Writes only to repos containing a `.commit-four-board` sentinel that names you; template copies
+  are claimed once, and only the sentinel and `state/` files are written (your code is untouched).
+  Never force-pushes; every write is one atomic ref update.
 - State commits are authored by `engine@commit-four.invalid` (a reserved TLD) so they never count
   as contributions; only piece commits do.
 - Volumes stay tiny (≤ ~130 commits per game), with ≤ 6 writes per minute, because GitHub's abuse
@@ -66,7 +89,8 @@ a vanity metric anyway; this makes the point with style.
 | `packages/core` | Rules, bitboard solver and AI, calendar mapping, GitHub's shading formula, render planning, engine, API writer |
 | `packages/cli` | `commit-four` CLI: `init`, `serve` (local helper), `play`, `status`, `doctor`, `pair` |
 | `packages/extension` | Chrome MV3 extension: board overlay, game panel, settings, offscreen AI worker |
-| `templates/board` | Files of the public board template (regenerate with `npx tsx scripts/make-template.ts`) |
+| `.commit-four-board`, `state/` | Unclaimed board files: a "Use this template" copy becomes its owner's board (the original can't be claimed) |
+| `templates/board` | Contents of a dedicated board repo (regenerate both with `npx tsx scripts/make-template.ts`) |
 | `scripts` | `build-book.ts` (opening book), `bench.ts` (solver benchmark), `make-template.ts` |
 | `docs` | `research.md` (how the graph works, with sources), `privacy-policy.md` |
 

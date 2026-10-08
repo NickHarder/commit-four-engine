@@ -63,7 +63,7 @@ describe("GameEngine + ApiWriter", () => {
     expect(history.at(-1)!.author.email).toBe("engine@commit-four.invalid");
     const state = JSON.parse(gh.file(STATE_PATH)!);
     expect(state.games[0].moves).toBe("44");
-    expect(gh.file("board.svg")).toContain("<svg");
+    expect(gh.file("state/board.svg")).toContain("<svg");
   });
 
   it("coalesces moves made while a write is in flight and stays idempotent on reload", async () => {
@@ -168,7 +168,7 @@ describe("claiming a template board", () => {
       now,
     });
     await expect(engine.load()).rejects.toThrow(/claimed/);
-    await engine.claim();
+    await engine.claim(`${OWNER}/my-board`);
     const sentinelAfter = JSON.parse(gh.file(SENTINEL_FILE)!);
     expect(sentinelAfter.owner).toBe(OWNER);
     expect(sentinelAfter.boardId).not.toBe("template");
@@ -176,5 +176,58 @@ describe("claiming a template board", () => {
     // the claim commit doesn't count as a contribution
     expect(gh.history().at(-1)!.author.email).toBe("engine@commit-four.invalid");
     await expect(engine.load()).resolves.toMatchObject({ owner: OWNER });
+  });
+});
+
+describe("template copies of the engine repo", () => {
+  const upstreamSentinel = JSON.stringify({
+    commitFour: 1,
+    owner: "",
+    boardId: "template",
+    upstream: "NickHarder/commit-four-engine",
+  });
+
+  it("claims a 'Use this template' copy without touching its code or README", async () => {
+    const gh = new FakeGitHub("alice", "my-c4", {
+      [SENTINEL_FILE]: upstreamSentinel,
+      [STATE_PATH]: JSON.stringify(initialState("unclaimed-board", now())),
+      "README.md": "# Commit Four (engine README)",
+      "packages/core/src/index.ts": "export {};",
+    });
+    const engine = new GameEngine({
+      writer: new ApiWriter({ owner: "alice", repo: "my-c4", token: "t", fetch: gh.fetch, minIntervalMs: 0 }),
+      owner: "alice",
+      pieceAuthor: { name: "Alice", email: "1+alice@users.noreply.github.com" },
+      now,
+    });
+    await engine.claim("alice/my-c4");
+    expect(gh.file("README.md")).toBe("# Commit Four (engine README)");
+    expect(gh.file("packages/core/src/index.ts")).toBe("export {};");
+    const sentinel = JSON.parse(gh.file(SENTINEL_FILE)!);
+    expect(sentinel.owner).toBe("alice");
+    expect(sentinel.upstream).toBeUndefined();
+    await (await engine.newGame({ difficulty: "casual", humanFirst: true })).written;
+    expect(JSON.parse(gh.file(STATE_PATH)!).games).toHaveLength(1);
+  });
+
+  it("refuses to claim the original template repo", async () => {
+    const gh = new FakeGitHub("NickHarder", "commit-four-engine", {
+      [SENTINEL_FILE]: upstreamSentinel,
+      [STATE_PATH]: JSON.stringify(initialState("unclaimed-board", now())),
+    });
+    const engine = new GameEngine({
+      writer: new ApiWriter({
+        owner: "NickHarder",
+        repo: "commit-four-engine",
+        token: "t",
+        fetch: gh.fetch,
+        minIntervalMs: 0,
+      }),
+      owner: "NickHarder",
+      pieceAuthor: author,
+      now,
+    });
+    await expect(engine.claim("nickharder/Commit-Four-Engine")).rejects.toThrow(/template itself/);
+    expect(JSON.parse(gh.file(SENTINEL_FILE)!).owner).toBe("");
   });
 });

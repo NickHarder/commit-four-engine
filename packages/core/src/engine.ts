@@ -26,7 +26,7 @@ import {
   startGame,
 } from "./state";
 import { renderBoardSvg } from "./svg";
-import { boardFiles, randomBoardId, UNCLAIMED_OWNER } from "./template";
+import { boardStateFiles, randomBoardId, UNCLAIMED_OWNER } from "./template";
 import { type BoardWriter, ConflictError, type Identity, type RemoteState, type WriteResult } from "./writer";
 
 export type Chooser = (moves: number[], difficulty: Difficulty) => Promise<number> | number;
@@ -106,18 +106,25 @@ export class GameEngine {
 
   /**
    * Claims a template-created board: stamps the owner into the sentinel and writes a fresh state.
-   * Only works while the sentinel is unclaimed, so it can't take over someone else's board.
+   * Only works while the sentinel is unclaimed, so it can't take over someone else's board, and
+   * never in the source template repo itself (so copies made from it stay claimable). Only the
+   * sentinel, state and picture are written; the repo's other files (code, README) are untouched.
    */
-  async claim(): Promise<BoardState> {
+  async claim(repoSlug: string): Promise<BoardState> {
     const remote = await this.opts.writer.readState({ refresh: true });
     if (!remote.sentinel)
       throw new Error("this repo has no .commit-four-board sentinel; refusing to write to it");
+    if (remote.sentinel.upstream && remote.sentinel.upstream.toLowerCase() === repoSlug.toLowerCase()) {
+      throw new Error(
+        `${repoSlug} is the Commit Four template itself; make your own copy with "Use this template" (or use an empty repo) and set that up instead`,
+      );
+    }
     if (remote.sentinel.owner !== UNCLAIMED_OWNER) {
       this.checkRemote(remote);
       return this.load();
     }
     const state = initialState(this.opts.owner, this.now());
-    const files = boardFiles(this.opts.owner, randomBoardId(), state);
+    const files = boardStateFiles(this.opts.owner, randomBoardId(), state);
     const result = await this.opts.writer.write({
       batches: [],
       pieceAuthor: this.opts.pieceAuthor,

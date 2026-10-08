@@ -7,8 +7,8 @@ import type { Sentinel } from "./writer";
 /** Sentinel owner of a repo created from the public template and not yet claimed. */
 export const UNCLAIMED_OWNER = "";
 
-export function sentinelContent(owner: string, boardId: string): string {
-  const s: Sentinel = { commitFour: 1, owner, boardId };
+export function sentinelContent(owner: string, boardId: string, upstream?: string): string {
+  const s: Sentinel = { commitFour: 1, owner, boardId, ...(upstream ? { upstream } : {}) };
   return `${JSON.stringify(s, null, 2)}\n`;
 }
 
@@ -25,7 +25,7 @@ export function boardReadme(owner: string): string {
 This repository is a **game board**, not a project. ${who} plays Connect 4 against an AI on their
 GitHub contribution graph, and every piece on the graph is a handful of backdated, empty commits here.
 
-![Current game](board.svg)
+![Current game](state/board.svg)
 
 | Square | Meaning |
 |---|---|
@@ -42,16 +42,26 @@ Made with [Commit Four](https://github.com/NickHarder/commit-four-engine). Unoff
 `;
 }
 
+/** The files that make a repo a board (sentinel + state + picture). Never touches anything else. */
+export function boardStateFiles(
+  owner: string,
+  boardId: string,
+  state?: BoardState,
+  upstream?: string,
+): { path: string; content: string }[] {
+  const s = state ?? initialState(owner || "unclaimed-board");
+  return [
+    { path: SENTINEL_FILE, content: sentinelContent(owner, boardId, upstream) },
+    { path: STATE_PATH, content: `${JSON.stringify(s, null, 2)}\n` },
+    { path: SVG_PATH, content: renderBoardSvg(s.games.at(-1) ?? null) },
+  ];
+}
+
+/** Full contents of a dedicated, empty board repo (adds a README explaining the squares). */
 export function boardFiles(
   owner: string,
   boardId: string,
   state?: BoardState,
 ): { path: string; content: string }[] {
-  const s = state ?? initialState(owner || "unclaimed-board");
-  return [
-    { path: SENTINEL_FILE, content: sentinelContent(owner, boardId) },
-    { path: STATE_PATH, content: `${JSON.stringify(s, null, 2)}\n` },
-    { path: SVG_PATH, content: renderBoardSvg(s.games.at(-1) ?? null) },
-    { path: "README.md", content: boardReadme(owner) },
-  ];
+  return [...boardStateFiles(owner, boardId, state), { path: "README.md", content: boardReadme(owner) }];
 }

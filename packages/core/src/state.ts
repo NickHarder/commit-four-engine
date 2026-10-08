@@ -18,7 +18,7 @@ import { replay } from "./rules";
 export const STATE_VERSION = 1;
 export const SENTINEL_FILE = ".commit-four-board";
 export const STATE_PATH = "state/game.json";
-export const SVG_PATH = "board.svg";
+export const SVG_PATH = "state/board.svg";
 /** Author of state commits. `.invalid` is a reserved TLD, so these never count as anyone's contribution. */
 export const ENGINE_AUTHOR = { name: "Commit Four", email: "engine@commit-four.invalid" } as const;
 /** Commits per square in season mode: AI = level 2, human = level 4 (see levels.ts). */

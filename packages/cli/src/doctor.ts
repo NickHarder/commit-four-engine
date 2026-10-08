@@ -9,6 +9,7 @@ import {
 } from "@commit-four/core";
 import type { BoardConfig } from "./config";
 import { git } from "./git";
+import { FORK_HELP, repoInfo } from "./repo";
 
 export interface Check {
   ok: boolean | "warn";
@@ -36,6 +37,18 @@ export async function runDoctor(
           detail: "make sure this email is verified on your GitHub account, or the squares won't count",
         },
   );
+
+  const info = await repoInfo({ owner: board.owner, repo: board.repo });
+  if (info?.fork)
+    checks.push({ ok: false, label: `${board.owner}/${board.repo} is a fork`, detail: FORK_HELP });
+  else if (info?.private) {
+    checks.push({
+      ok: "warn",
+      label: "board repo is private",
+      detail: "turn on Settings > Public profile > 'Include private contributions' or the board won't show",
+    });
+  } else if (info)
+    checks.push({ ok: true, label: "board repo is a standalone public repo, so its commits count" });
 
   // Profile visibility (anonymous view)
   try {
