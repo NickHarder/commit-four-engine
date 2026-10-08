@@ -3,24 +3,25 @@
  * talking to the real local helper, which writes to an in-memory GitHub.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ApiWriter, GameEngine, initialState, SENTINEL_FILE, STATE_PATH } from "@commit-four/core";
-import { type BrowserContext, chromium, type Page } from "playwright-core";
+import type { BrowserContext, Page } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createHelperServer } from "../../cli/src/server";
 import { FakeGitHub } from "../../core/test/fakeGitHub";
 import { calendarHtml } from "../../core/test/fixtures";
+import { canRunChromium, launchWithExtension } from "./launch";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const extDir = join(here, "..");
 const OWNER = "NickHarder";
 const EMAIL = "29993711+NickHarder@users.noreply.github.com";
 const TOKEN = "e2e-pairing-token-0123456789";
-const canRun = existsSync(chromium.executablePath());
+const canRun = canRunChromium();
 
 describe.skipIf(!canRun)("extension on a profile page (companion mode)", () => {
   let gh: FakeGitHub;
@@ -64,11 +65,7 @@ describe.skipIf(!canRun)("extension on a profile page (companion mode)", () => {
     const port = (server.address() as AddressInfo).port;
 
     userDir = mkdtempSync(join(tmpdir(), "c4-chrome-"));
-    // Playwright's headless mode can't load extensions; Chrome's own new headless mode can.
-    context = await chromium.launchPersistentContext(userDir, {
-      headless: false,
-      args: ["--headless=new", `--disable-extensions-except=${buildDir}`, `--load-extension=${buildDir}`],
-    });
+    context = await launchWithExtension(buildDir, userDir);
     await context.route("https://github.com/**", async (route) => {
       const url = new URL(route.request().url());
       if (url.pathname === `/users/${OWNER}/contributions`) {

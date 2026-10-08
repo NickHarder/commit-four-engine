@@ -10,8 +10,9 @@ export interface Settings {
   branch: string;
   helperPort: number;
   helperToken: string;
-  /** Fine-grained PAT for browser-only mode (single repo, Contents: read & write). */
+  /** Browser-only mode token: from "Sign in with GitHub" (oauth) or a fine-grained PAT (pat). */
   pat: string;
+  authKind?: "oauth" | "pat";
   author?: Identity;
 }
 

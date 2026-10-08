@@ -5,6 +5,7 @@ export * from "./calendar";
 export * from "./calibrate";
 export * from "./engine";
 export * from "./fragment";
+export * from "./github";
 export * from "./heuristic";
 export * from "./levels";
 export * from "./renderPlan";

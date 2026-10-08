@@ -33,7 +33,8 @@
     }
   ],
   "permissions": ["storage", "offscreen"],
-  "optional_host_permissions": ["https://api.github.com/*", "http://127.0.0.1/*"],
+  "host_permissions": ["https://api.github.com/*", "https://github.com/login/*"],
+  "optional_host_permissions": ["http://127.0.0.1/*"],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"
   }

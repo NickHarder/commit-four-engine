@@ -15,11 +15,14 @@ export class FakeGitHub {
   readonly requests: { method: string; path: string }[] = [];
   private seq = 0;
 
+  /** Pass `null` for files to create an empty repo (no commits, no branch). */
   constructor(
     readonly owner: string,
     readonly repo: string,
-    files: Record<string, string>,
+    files: Record<string, string> | null,
+    readonly meta: { fork?: boolean; private?: boolean } = {},
   ) {
+    if (files === null) return;
     const tree = this.addTree(new Map(Object.entries(files)));
     const sha = this.addCommit({
       tree,
@@ -87,8 +90,36 @@ export class FakeGitHub {
     if (!String(new Headers(init?.headers).get("Authorization")).startsWith("Bearer "))
       return json(401, { message: "auth" });
 
-    if (method === "GET" && path === `${base}/git/ref/heads/main`)
+    if (method === "GET" && path === base) {
+      return json(200, {
+        owner: { login: this.owner },
+        name: this.repo,
+        default_branch: "main",
+        fork: this.meta.fork ?? false,
+        private: this.meta.private ?? false,
+        permissions: { push: true },
+      });
+    }
+    if (method === "GET" && path === `${base}/git/ref/heads/main`) {
+      if (!this.refs.has("main")) return json(409, { message: "Git Repository is empty." });
       return json(200, { object: { sha: this.refs.get("main") } });
+    }
+    if (method === "PUT" && path.startsWith(`${base}/contents/`)) {
+      const file = decodeURIComponent(path.slice(`${base}/contents/`.length));
+      const parent = this.refs.get("main");
+      const tree = new Map(parent ? this.trees.get(this.commits.get(parent)!.tree)! : []);
+      tree.set(file, Buffer.from(body.content, "base64").toString("utf8"));
+      const now = "2026-10-08T00:00:00Z";
+      const sha = this.addCommit({
+        tree: this.addTree(tree),
+        parents: parent ? [parent] : [],
+        author: { ...body.author, date: now },
+        committer: { ...body.committer, date: now },
+        message: body.message,
+      });
+      this.refs.set("main", sha);
+      return json(201, { commit: { sha } });
+    }
     if (method === "GET" && path.startsWith(`${base}/git/commits/`)) {
       const c = this.commits.get(path.split("/").pop()!);
       return c

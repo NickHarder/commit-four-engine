@@ -138,6 +138,45 @@ export class ApiWriter implements BoardWriter {
     };
   }
 
+  /**
+   * First commit of an empty repo. The Git Data API can't write to an empty repo, so the first
+   * file goes through the Contents API (which creates the branch), then the rest in one commit.
+   * Everything is authored by ENGINE_AUTHOR, so setup never counts as a contribution.
+   */
+  async bootstrap(files: { path: string; content: string }[], message: string): Promise<string> {
+    const { owner, repo, branch } = this.opts;
+    const [first, ...rest] = files;
+    if (!first) throw new Error("nothing to bootstrap");
+    await this.mutate("PUT", `/repos/${owner}/${repo}/contents/${first.path}`, {
+      message,
+      content: encodeBase64Utf8(first.content),
+      branch,
+      author: ENGINE_AUTHOR,
+      committer: ENGINE_AUTHOR,
+    });
+    const head = await this.headSha();
+    if (rest.length === 0) return head;
+    const r = await this.write({
+      batches: [],
+      pieceAuthor: ENGINE_AUTHOR,
+      files: rest,
+      message,
+      expectedHead: head,
+    });
+    return r.head;
+  }
+
+  /** True when the repo has no commits yet (GitHub answers 409 "Git Repository is empty"). */
+  async isEmpty(): Promise<boolean> {
+    try {
+      await this.headSha();
+      return false;
+    } catch (e) {
+      if (e instanceof GitHubApiError && (e.status === 409 || e.status === 404)) return true;
+      throw e;
+    }
+  }
+
   /** Requests a write will cost, for the hourly budget. */
   static requestCost(req: Pick<WriteRequest, "batches">): number {
     return pieceCommitCount(req.batches) + 3; // + tree, state commit, ref update
@@ -254,6 +293,13 @@ export class ApiWriter implements BoardWriter {
     }
     return (await res.json()) as T;
   }
+}
+
+export function encodeBase64Utf8(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
 }
 
 export function decodeBase64Utf8(b64: string): string {

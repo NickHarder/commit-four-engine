@@ -20,11 +20,11 @@ Games are drawn in a past "season" year (2016, then 2015, …), so your recent a
 Squares show as "pending" until GitHub's graph catches up, and the game keeps going even when GitHub is slow.
 
 How to use it:
-1. Create your board repo from the Commit Four board template (or run "npx commit-four init you/your-board").
-2. Open this extension's settings and pick how moves get written: the local helper ("npx commit-four serve", fastest, no token in the browser) or browser only (a fine-grained token limited to the board repo).
-3. Open the season year on your profile and click "New game".
+1. Click the extension icon and choose "Sign in with GitHub", then enter the code GitHub shows you.
+2. Click "Set up my board": a board repository is created in your account (or an existing one is reused).
+3. Open the link to your board on your profile and click "New game".
 
-Privacy: everything stays in your browser. The extension only works on your own profile, only talks to GitHub's API and (if you choose) a helper running on your own computer, collects no analytics, and never writes to any repo except the board repo you configure.
+Privacy: everything stays in your browser. The extension only works on your own profile, only talks to GitHub and (if you choose) a helper running on your own computer, collects no analytics, and never writes to any repo except your board repo.
 
 Unofficial project, not affiliated with or endorsed by GitHub. Source, issues and support: https://github.com/NickHarder/commit-four-engine
 
@@ -56,11 +56,12 @@ Screenshots must not show GitHub's logo prominently or imply endorsement.
 
 | Permission | Type | Justification |
 |------------|------|---------------|
-| storage | permissions | Saves the user's board settings (repo name, mode, and the pairing token or GitHub token they enter) in their own browser. |
+| storage | permissions | Saves the user's board settings (repo name, mode, and their GitHub sign-in token or helper pairing token) in their own browser. |
 | offscreen | permissions | Runs the Connect 4 AI in a background worker so thinking about a move never freezes the GitHub page. |
 | https://github.com/* | content script match | Draws the game board and the game panel on the contribution graph of the signed-in user's own profile page, and re-reads that graph to confirm when GitHub shows the new squares. It does nothing on other pages or other people's profiles. |
-| https://api.github.com/* | optional_host_permissions | Requested only if the user chooses "browser only" mode: writes each move as commits to the user's own board repository with the token they provide. |
-| http://127.0.0.1/* | optional_host_permissions | Requested only if the user chooses "local helper" mode: sends moves to the Commit Four helper program running on the user's own computer. |
+| https://github.com/login/* | host_permissions | "Sign in with GitHub": requests a sign-in code and the resulting access token from GitHub's device sign-in endpoints. |
+| https://api.github.com/* | host_permissions | Creates the user's board repository and writes each move to it as commits, using the user's own sign-in. |
+| http://127.0.0.1/* | optional_host_permissions | Requested only if the user chooses the "local helper" mode: sends moves to the Commit Four helper program running on the user's own computer. |
 
 ## Privacy & Data Use
 
@@ -73,7 +74,7 @@ Screenshots must not show GitHub's logo prominently or imply endorsement.
 | Personally identifiable info | No | — | — | No |
 | Health info | No | — | — | No |
 | Financial info | No | — | — | No |
-| Authentication info | Yes (GitHub token or helper pairing token the user enters) | Only to api.github.com or the user's own computer (127.0.0.1), to make the moves the user asks for | Write moves to the user's board repo | No |
+| Authentication info | Yes (the GitHub sign-in token, or a token / helper pairing token the user enters) | Only to github.com (sign-in), api.github.com, or the user's own computer (127.0.0.1), to make the moves the user asks for | Create the board repo and write moves to it | No |
 | Personal communications | No | — | — | No |
 | Location | No | — | — | No |
 | Web history | No | — | — | No |

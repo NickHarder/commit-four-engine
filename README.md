@@ -35,7 +35,20 @@ a vanity metric anyway; this makes the point with style.
 - **AI.** Casual, Hard (8-ply search) or Perfect (opening book plus an exact solver; it never gives
   away a won or drawn position). Connect 4 is solved: if Perfect moves first you can't win.
 
-## Make your own
+## Play in two minutes (no terminal)
+
+1. **Install the extension**: from the Chrome Web Store (listing pending), or for now download the
+   built zip, unzip it, and use `chrome://extensions` → Developer mode → **Load unpacked**.
+2. Click the extension's icon → **Sign in with GitHub** → enter the code GitHub shows you.
+3. **Set up my board**: creates a `commit-four-board` repo for you (or reuses/claims one).
+4. **Open your board and play**: click a column on your 2016 graph, then **New game**.
+
+Signing in grants access to your public repositories (GitHub's narrowest OAuth option for this);
+Commit Four only ever writes to your board repo. Revoke any time at github.com/settings/applications.
+Prefer a narrower fine-grained token, or the faster local helper? Both are under **Advanced** in the
+extension settings.
+
+## Make your own copy of the code
 
 You need Node 22+, git, and Chrome.
 

@@ -26,6 +26,7 @@ await build({
   target: "chrome123",
   outdir: out,
   legalComments: "none",
+  define: { __C4_CLIENT_ID__: JSON.stringify(process.env.COMMIT_FOUR_CLIENT_ID ?? "") },
   logLevel: "warning",
 });
 await cp(join(here, "static"), out, { recursive: true });

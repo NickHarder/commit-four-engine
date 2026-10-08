@@ -15,6 +15,36 @@
         commits in a dedicated board repo: 4 for yours, 2 for the AI's.
       </p>
 
+      <section id="account" aria-labelledby="account-title">
+        <h2 id="account-title">Get playing</h2>
+        <div id="signed-out">
+          <p>1. Sign in so Commit Four can create your board repo and write your moves.</p>
+          <button type="button" id="signin" class="primary">Sign in with GitHub</button>
+        </div>
+        <div id="device" hidden>
+          <p>Enter this code on GitHub:</p>
+          <p class="code" id="user-code"></p>
+          <div class="actions">
+            <button type="button" id="open-github" class="primary">Copy code and open GitHub</button>
+            <button type="button" id="cancel-signin" class="secondary">Cancel</button>
+          </div>
+        </div>
+        <div id="signed-in" hidden>
+          <p>Signed in as <strong id="login"></strong>. <button type="button" id="signout" class="link">Sign out</button></p>
+          <p>2. Set up your board repo (created for you if it doesn't exist yet).</p>
+          <div class="field">
+            <label for="board-name">Board repo</label>
+            <input id="board-name" required pattern="[A-Za-z0-9._-]{1,100}" value="commit-four-board" aria-errormessage="board-name-error" />
+            <p class="error-msg" id="board-name-error">Use letters, numbers, dots, dashes or underscores.</p>
+          </div>
+          <button type="button" id="setup-board" class="primary">Set up my board</button>
+          <p id="play" hidden>3. <a id="play-link" href="https://github.com/">Open your board and play →</a></p>
+        </div>
+        <p id="account-status" role="status" aria-live="polite"></p>
+      </section>
+
+      <details id="advanced">
+        <summary>Advanced: use your own token or the local helper</summary>
       <form id="settings" novalidate>
         <fieldset>
           <legend>Board repository</legend>
@@ -37,10 +67,10 @@
 
         <fieldset>
           <legend>How moves get written</legend>
-          <label class="choice"><input type="radio" name="mode" value="companion" checked /> <span><strong>Local helper</strong> (fastest, no GitHub token in the browser). Run <code>npx commit-four serve</code> and paste its pairing token.</span></label>
-          <label class="choice"><input type="radio" name="mode" value="browser" /> <span><strong>Browser only</strong>. Uses a fine-grained token limited to the board repo (Contents: read and write).</span></label>
+          <label class="choice"><input type="radio" name="mode" value="browser" checked /> <span><strong>Browser only, with your own token</strong>: a fine-grained token limited to the board repo (Contents: read and write).</span></label>
+          <label class="choice"><input type="radio" name="mode" value="companion" /> <span><strong>Local helper</strong>: <code>npm run serve</code> pushes with your git login; paste its pairing token.</span></label>
 
-          <div class="mode-companion">
+          <div class="mode-companion" hidden>
             <div class="field">
               <label for="helperPort">Helper port</label>
               <input id="helperPort" name="helperPort" type="number" min="1024" max="65535" value="47474" required aria-errormessage="port-error" />
@@ -53,7 +83,7 @@
             </div>
           </div>
 
-          <div class="mode-browser" hidden>
+          <div class="mode-browser">
             <div class="field">
               <label for="pat">Fine-grained personal access token</label>
               <input id="pat" name="pat" type="password" minlength="20" autocomplete="off" aria-errormessage="pat-error" />
@@ -72,11 +102,14 @@
           <button type="button" id="claim" hidden>Claim this board</button>
         </div>
         <p id="result" role="status" aria-live="polite"></p>
+
       </form>
+      </details>
 
       <section class="notes">
         <h2>Good to know</h2>
         <ul>
+          <li>Signing in grants Commit Four access to your public repositories (GitHub has no narrower option for this); it only ever writes to the board repo you set up here. You can revoke it any time at github.com/settings/applications.</li>
           <li>Boards are drawn in past "season" years (2016, then 2015, …), so your real recent activity keeps its look. Open that year on your profile to play.</li>
           <li>If your profile activity is private, only you can see the board.</li>
           <li>Commit Four only writes to repos containing its <code>.commit-four-board</code> file, never force-pushes, and keeps volumes tiny (about 130 commits per game).</li>

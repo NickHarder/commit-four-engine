@@ -1,16 +1,16 @@
 /**
- * End-to-end, browser-only mode: the extension's service worker runs the engine, the AI runs in
- * the offscreen worker, and moves are written through the GitHub API (routed to an in-memory GitHub).
+ * End-to-end, the no-terminal path: install the extension, Sign in with GitHub (device flow),
+ * Set up my board (the repo gets created), then play a move on the profile. GitHub is faked.
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { initialState, SENTINEL_FILE, STATE_PATH } from "@commit-four/core";
-import type { BrowserContext, Page } from "playwright-core";
+import { SENTINEL_FILE, STATE_PATH } from "@commit-four/core";
+import type { BrowserContext, Route } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { FakeGitHub } from "../../core/test/fakeGitHub";
+import { FakeAccount } from "../../core/test/fakeAccount";
 import { calendarHtml } from "../../core/test/fixtures";
 import { canRunChromium, launchWithExtension } from "./launch";
 
@@ -20,40 +20,44 @@ const OWNER = "NickHarder";
 const EMAIL = "29993711+NickHarder@users.noreply.github.com";
 const canRun = canRunChromium();
 
-describe.skipIf(!canRun)("extension on a profile page (browser-only mode)", () => {
-  let gh: FakeGitHub;
+describe.skipIf(!canRun)("sign in with GitHub, create the board, play", () => {
+  const account = new FakeAccount(OWNER, 29993711);
   let context: BrowserContext;
-  let page: Page;
   let userDir: string;
   let buildDir: string;
+  let extensionId: string;
+
   const countsByDate = () => {
     const out = new Map<string, number>();
-    for (const c of gh.history())
+    for (const c of account.repo("commit-four-board")?.history() ?? []) {
       if (c.author.email === EMAIL)
         out.set(c.author.date.slice(0, 10), (out.get(c.author.date.slice(0, 10)) ?? 0) + 1);
+    }
     return out;
+  };
+
+  const forward = async (route: Route) => {
+    const req = route.request();
+    const res = await account.fetch(req.url(), {
+      method: req.method(),
+      headers: await req.allHeaders(),
+      body: req.postData() ?? undefined,
+    });
+    await route.fulfill({ status: res.status, contentType: "application/json", body: await res.text() });
   };
 
   beforeAll(async () => {
     buildDir = mkdtempSync(join(tmpdir(), "c4-ext-"));
-    execFileSync("node", ["build.mjs", "--out", buildDir], { cwd: extDir });
-    gh = new FakeGitHub(OWNER, "board", {
-      [SENTINEL_FILE]: JSON.stringify({ commitFour: 1, owner: OWNER, boardId: "e2e" }),
-      [STATE_PATH]: JSON.stringify(initialState(OWNER)),
+    execFileSync("node", ["build.mjs", "--out", buildDir], {
+      cwd: extDir,
+      env: { ...process.env, COMMIT_FOUR_CLIENT_ID: account.clientId },
     });
     userDir = mkdtempSync(join(tmpdir(), "c4-chrome-"));
     context = await launchWithExtension(buildDir, userDir);
-    await context.route("https://api.github.com/**", async (route) => {
-      const req = route.request();
-      const res = await gh.fetch(req.url(), {
-        method: req.method(),
-        headers: await req.allHeaders(),
-        body: req.postData() ?? undefined,
-      });
-      await route.fulfill({ status: res.status, contentType: "application/json", body: await res.text() });
-    });
+    await context.route("https://api.github.com/**", forward);
     await context.route("https://github.com/**", async (route) => {
       const url = new URL(route.request().url());
+      if (url.pathname.startsWith("/login/")) return forward(route);
       if (url.pathname === `/users/${OWNER}/contributions`) {
         return route.fulfill({
           contentType: "text/html",
@@ -74,18 +78,7 @@ describe.skipIf(!canRun)("extension on a profile page (browser-only mode)", () =
       return route.fulfill({ status: 404, body: "" });
     });
     const sw = context.serviceWorkers()[0] ?? (await context.waitForEvent("serviceworker"));
-    await sw.evaluate((settings) => chrome.storage.local.set({ settings }), {
-      mode: "browser",
-      owner: OWNER,
-      repo: "board",
-      branch: "main",
-      helperPort: 47474,
-      helperToken: "",
-      pat: "github_pat_test_token",
-      author: { name: "Nick Harder", email: EMAIL },
-    });
-    page = await context.newPage();
-    await page.goto(`https://github.com/${OWNER}?tab=overview&from=2016-12-01&to=2016-12-31`);
+    extensionId = new URL(sw.url()).host;
   }, 60_000);
 
   afterAll(async () => {
@@ -94,14 +87,31 @@ describe.skipIf(!canRun)("extension on a profile page (browser-only mode)", () =
     rmSync(buildDir, { recursive: true, force: true });
   });
 
-  it("plays a move with the AI in the offscreen worker and writes through the API", async () => {
+  it("goes from a fresh install to a move on the graph without a terminal", async () => {
+    const options = await context.newPage();
+    await options.goto(`chrome-extension://${extensionId}/options.html`);
+    await options.getByRole("button", { name: "Sign in with GitHub" }).click();
+    await options.locator("#user-code").getByText("WDJB-MJHT").waitFor({ timeout: 10_000 });
+    await options.getByText("Signed in as").waitFor({ timeout: 15_000 });
+    expect(await options.locator("#login").textContent()).toBe(`@${OWNER}`);
+
+    await options.getByRole("button", { name: "Set up my board" }).click();
+    await options.getByText(`Created ${OWNER}/commit-four-board.`).waitFor({ timeout: 15_000 });
+    const repo = account.repo("commit-four-board")!;
+    expect(JSON.parse(repo.file(SENTINEL_FILE)!).owner).toBe(OWNER);
+    expect(repo.history().every((c) => c.author.email === "engine@commit-four.invalid")).toBe(true);
+    const playHref = await options.locator("#play-link").getAttribute("href");
+    expect(playHref).toBe(`https://github.com/${OWNER}?tab=overview&from=2016-12-01&to=2016-12-31`);
+
+    const page = await context.newPage();
+    await page.goto(playHref!);
     await page.locator(".commit-four-hud").getByText("No games yet").waitFor({ timeout: 30_000 });
     await page.locator(".commit-four-hud select").selectOption("casual");
     await page.getByRole("button", { name: "New game" }).click();
     await page.waitForFunction(() => document.querySelectorAll("td.c4-cell").length === 42, null, {
       timeout: 15_000,
     });
-    await page.locator('td.c4-cell[data-c4-col="0"]').first().click();
+    await page.locator('td.c4-cell[data-c4-col="3"]').first().click();
     await page
       .locator(".commit-four-hud")
       .getByText(/Your move/)
@@ -109,11 +119,7 @@ describe.skipIf(!canRun)("extension on a profile page (browser-only mode)", () =
     await page.waitForFunction(() => document.querySelectorAll(".c4-pending").length === 0, null, {
       timeout: 30_000,
     });
-    const state = JSON.parse(gh.file(STATE_PATH)!);
-    expect(state.games[0].moves).toMatch(/^1[1-7]$/);
-    const counts = countsByDate();
-    expect(counts.get("2016-01-01")).toBe(4);
-    expect(counts.get("2016-01-16")).toBe(4); // column 1 bottom = first Saturday of slot 0
-    expect([...counts.values()].filter((n) => n === 2)).toHaveLength(1); // one AI square
-  }, 90_000);
+    expect(JSON.parse(repo.file(STATE_PATH)!).games[0].moves).toMatch(/^4[1-7]$/);
+    expect(countsByDate().get("2016-02-06")).toBe(4);
+  }, 120_000);
 });

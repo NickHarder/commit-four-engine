@@ -7,8 +7,9 @@ GitHub contribution graph. It is an unofficial project, not affiliated with GitH
 
 ## What data it handles
 
-- **Settings you enter**: your GitHub username, the name of your board repository, and either a
-  pairing token for the local helper or a fine-grained GitHub token. These are stored only in your
+- **Settings and sign-in**: your GitHub username, the name of your board repository, and either the
+  access token GitHub issues when you "Sign in with GitHub", a token you paste, or a pairing token
+  for the local helper. These are stored only in your
   browser's extension storage (or, for the command-line tool, in `~/.commit-four/config.json` on
   your computer, readable only by your user account).
 - **Your profile's contribution graph**: on your own GitHub profile page, the extension reads the
@@ -16,8 +17,9 @@ GitHub contribution graph. It is an unofficial project, not affiliated with GitH
 
 ## Where data goes
 
-- In **browser-only mode**, the extension sends your token to `api.github.com` to write moves to
-  your board repository — the only repository it will write to.
+- **Signing in** talks to `github.com/login` (GitHub's device sign-in) to obtain your token.
+- In **browser mode** (the default), the extension uses your token with `api.github.com` to create
+  your board repository and write moves to it — the only repository it will write to.
 - In **local-helper mode**, the extension sends moves to the helper program on your own computer
   (`127.0.0.1`), which pushes them with your existing git login.
 
