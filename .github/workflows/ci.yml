@@ -19,6 +19,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Install Chromium for the extension end-to-end tests
+        run: npx playwright-core install --with-deps chromium
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test

@@ -148,3 +148,33 @@ describe("GameEngine + ApiWriter", () => {
     ).rejects.toThrow(/hourly write budget/);
   });
 });
+
+describe("claiming a template board", () => {
+  it("stamps the owner once and then plays normally", async () => {
+    const gh = new FakeGitHub(OWNER, "my-board", {
+      [SENTINEL_FILE]: JSON.stringify({ commitFour: 1, owner: "", boardId: "template" }),
+      [STATE_PATH]: JSON.stringify(initialState("unclaimed-board", now())),
+    });
+    const engine = new GameEngine({
+      writer: new ApiWriter({
+        owner: OWNER,
+        repo: "my-board",
+        token: "t",
+        fetch: gh.fetch,
+        minIntervalMs: 0,
+      }),
+      owner: OWNER,
+      pieceAuthor: author,
+      now,
+    });
+    await expect(engine.load()).rejects.toThrow(/claimed/);
+    await engine.claim();
+    const sentinelAfter = JSON.parse(gh.file(SENTINEL_FILE)!);
+    expect(sentinelAfter.owner).toBe(OWNER);
+    expect(sentinelAfter.boardId).not.toBe("template");
+    expect(JSON.parse(gh.file(STATE_PATH)!).owner).toBe(OWNER);
+    // the claim commit doesn't count as a contribution
+    expect(gh.history().at(-1)!.author.email).toBe("engine@commit-four.invalid");
+    await expect(engine.load()).resolves.toMatchObject({ owner: OWNER });
+  });
+});

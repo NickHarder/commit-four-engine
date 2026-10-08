@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Commit Four settings</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Commit Four</h1>
+      <p class="lede">
+        Play Connect 4 against an AI on your own GitHub contribution graph. Each piece is a few backdated, empty
+        commits in a dedicated board repo: 4 for yours, 2 for the AI's.
+      </p>
+
+      <form id="settings" novalidate>
+        <fieldset>
+          <legend>Board repository</legend>
+          <div class="field">
+            <label for="owner">Your GitHub username</label>
+            <input id="owner" name="owner" required pattern="[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}" autocomplete="username" aria-errormessage="owner-error" />
+            <p class="error-msg" id="owner-error">Enter your GitHub username.</p>
+          </div>
+          <div class="field">
+            <label for="repo">Board repo name</label>
+            <input id="repo" name="repo" required pattern="[A-Za-z0-9._-]{1,100}" placeholder="my-commit-four-board" aria-errormessage="repo-error" />
+            <p class="error-msg" id="repo-error">Enter the name of your board repo (created from the template, or with <code>commit-four init</code>).</p>
+          </div>
+          <div class="field">
+            <label for="branch">Branch</label>
+            <input id="branch" name="branch" required pattern="[A-Za-z0-9._/-]{1,100}" value="main" aria-errormessage="branch-error" />
+            <p class="error-msg" id="branch-error">Enter the default branch (usually main).</p>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>How moves get written</legend>
+          <label class="choice"><input type="radio" name="mode" value="companion" checked /> <span><strong>Local helper</strong> (fastest, no GitHub token in the browser). Run <code>npx commit-four serve</code> and paste its pairing token.</span></label>
+          <label class="choice"><input type="radio" name="mode" value="browser" /> <span><strong>Browser only</strong>. Uses a fine-grained token limited to the board repo (Contents: read and write).</span></label>
+
+          <div class="mode-companion">
+            <div class="field">
+              <label for="helperPort">Helper port</label>
+              <input id="helperPort" name="helperPort" type="number" min="1024" max="65535" value="47474" required aria-errormessage="port-error" />
+              <p class="error-msg" id="port-error">Use the port shown by <code>commit-four serve</code>.</p>
+            </div>
+            <div class="field">
+              <label for="helperToken">Pairing token</label>
+              <input id="helperToken" name="helperToken" type="password" required minlength="16" autocomplete="off" aria-errormessage="token-error" />
+              <p class="error-msg" id="token-error">Paste the pairing token printed by <code>commit-four serve</code>.</p>
+            </div>
+          </div>
+
+          <div class="mode-browser" hidden>
+            <div class="field">
+              <label for="pat">Fine-grained personal access token</label>
+              <input id="pat" name="pat" type="password" minlength="20" autocomplete="off" aria-errormessage="pat-error" />
+              <p class="error-msg" id="pat-error">Paste a fine-grained token (it starts with <code>github_pat_</code>).</p>
+              <p class="hint">
+                <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">Create one</a>:
+                Repository access → only your board repo; Permissions → Contents: Read and write; short expiry.
+                It is stored only in this browser and only sent to api.github.com.
+              </p>
+            </div>
+          </div>
+        </fieldset>
+
+        <div class="actions">
+          <button type="submit">Save and test</button>
+          <button type="button" id="claim" hidden>Claim this board</button>
+        </div>
+        <p id="result" role="status" aria-live="polite"></p>
+      </form>
+
+      <section class="notes">
+        <h2>Good to know</h2>
+        <ul>
+          <li>Boards are drawn in past "season" years (2016, then 2015, …), so your real recent activity keeps its look. Open that year on your profile to play.</li>
+          <li>If your profile activity is private, only you can see the board.</li>
+          <li>Commit Four only writes to repos containing its <code>.commit-four-board</code> file, never force-pushes, and keeps volumes tiny (about 130 commits per game).</li>
+          <li>Unofficial project; GitHub's abuse detection could still flag unusual activity. Use at your own risk.</li>
+        </ul>
+      </section>
+    </main>
+    <script src="options.js"></script>
+  </body>
+</html>

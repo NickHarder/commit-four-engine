@@ -26,7 +26,7 @@ import {
   startGame,
 } from "./state";
 import { renderBoardSvg } from "./svg";
-import { boardFiles, UNCLAIMED_OWNER } from "./template";
+import { boardFiles, randomBoardId, UNCLAIMED_OWNER } from "./template";
 import { type BoardWriter, ConflictError, type Identity, type RemoteState, type WriteResult } from "./writer";
 
 export type Chooser = (moves: number[], difficulty: Difficulty) => Promise<number> | number;
@@ -117,7 +117,7 @@ export class GameEngine {
       return this.load();
     }
     const state = initialState(this.opts.owner, this.now());
-    const files = boardFiles(this.opts.owner, remote.sentinel.boardId, state);
+    const files = boardFiles(this.opts.owner, randomBoardId(), state);
     const result = await this.opts.writer.write({
       batches: [],
       pieceAuthor: this.opts.pieceAuthor,

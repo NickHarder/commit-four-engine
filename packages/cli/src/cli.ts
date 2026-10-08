@@ -17,12 +17,12 @@ import {
   DIFFICULTIES,
   type Difficulty,
   GameEngine,
-  PERFECT_BOOK,
   playerToMove,
   randomBoardId,
   seasonProfileUrl,
   UNCLAIMED_OWNER,
 } from "@commit-four/core";
+import { PERFECT_BOOK } from "@commit-four/core/defaultBook";
 import { describeStatus, renderBoard } from "./board";
 import {
   type BoardConfig,

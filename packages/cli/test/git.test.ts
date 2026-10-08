@@ -11,7 +11,8 @@ let root: string;
 let remote: string;
 let local: string;
 
-const sh = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+const sh = (cwd: string, ...args: string[]) =>
+  execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "c4-git-"));

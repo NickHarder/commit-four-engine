@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "Commit Four — Connect 4 on your contribution graph",
+  "short_name": "Commit Four",
+  "version": "0.1.0",
+  "description": "Play Connect 4 against an AI by clicking your own GitHub contribution graph. Unofficial; not affiliated with GitHub.",
+  "minimum_chrome_version": "123",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "Commit Four settings",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png"
+    }
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "background": {
+    "service_worker": "sw.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://github.com/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": ["storage", "offscreen"],
+  "optional_host_permissions": ["https://api.github.com/*", "http://127.0.0.1/*"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}

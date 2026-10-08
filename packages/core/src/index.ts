@@ -3,7 +3,6 @@ export * from "./board";
 export * from "./book";
 export * from "./calendar";
 export * from "./calibrate";
-export * from "./defaultBook";
 export * from "./engine";
 export * from "./fragment";
 export * from "./heuristic";
