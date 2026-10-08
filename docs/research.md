@@ -71,3 +71,19 @@ Commit Four's engine is an independent implementation of the published ideas, wi
 
 Measured on this implementation (Node 22): ~2.2 M nodes/s; exact solves ≈ 0.05 s at 16 stones,
 ≈ 2 s at 10 stones; weak (win/draw/loss) solves ≈ 0.35 s at 10 stones and ≈ 0.9 s at 8 stones.
+
+## Live test (2026-10-08, `NickHarder/commit-four-board`)
+
+Board created with `commit-four init`; game 1 started at Hard difficulty; human played column 4 and the AI
+answered column 4.
+
+- **Git path (local helper):** setup push at 01:15:12 UTC, then two pushes (game start, then the move) of
+  ~1.6 s each, finishing at 01:15:21 UTC.
+- **Commits on GitHub:** the 10 piece commits are attributed to the `NickHarder` account (REST
+  `author.login`), with author dates `2016-01-01/02-05/02-06T12:00:00Z`, and each has its parent's
+  tree (empty). The 3 engine commits (`engine@commit-four.invalid`) are attributed to no account.
+- **API path (browser-only writer):** not testable from a Claude Code cloud session: its egress proxy
+  refuses Git Data API writes ("Write access to this GitHub API path is not permitted through this
+  proxy"). This is a sandbox restriction, not GitHub's; it still needs a check from a normal browser.
+- **Graph:** pending the owner's check of the 2016 view (the profile is private, so it can't be read
+  from outside).
