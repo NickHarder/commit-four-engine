@@ -7,6 +7,8 @@ or two. Every piece is a handful of backdated, empty commits in a dedicated boar
 **4 commits** for your pieces (darkest green) and **2** for the AI's (mid green). Contributions are
 a vanity metric anyway; this makes the point with style.
 
+▶ **[Watch the 25-second demo](https://youtu.be/i_M3oNOQUNA)**
+
 ```
  graph column = week, graph row = weekday (Mon top … Sat bottom)
 
