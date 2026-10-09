@@ -4,8 +4,9 @@
  *
  *   C4_DEMO_VIDEO=1 npx vitest run packages/extension/test/demo-video.test.ts
  *
- * Writes packages/extension/store-assets/commit-four-demo-1080p.mp4 (and a thumbnail). Needs
- * ffmpeg with libx264. Skipped in normal test runs.
+ * Writes packages/extension/store-assets/commit-four-demo-1080p.mp4 (and a thumbnail), with an
+ * 8-bit soundtrack and sound effects from demoAudio.ts on the moments they belong to. Needs ffmpeg
+ * with libx264. Skipped in normal test runs.
  */
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -26,6 +27,7 @@ import type { BrowserContext, Page } from "playwright-core";
 import { afterAll, beforeAll, describe, it } from "vitest";
 import { FakeGitHub } from "../../core/test/fakeGitHub";
 import { calendarHtml } from "../../core/test/fixtures";
+import { type Sfx, soundtrackWav } from "./demoAudio";
 import { CURSOR_SCRIPT, captionScript, demoCard, demoProfile } from "./demoScenes";
 import { withBackground } from "./fakeProfile";
 import { canRunChromium, extensionWorker, launchWithExtension } from "./launch";
@@ -201,6 +203,7 @@ describe.skipIf(!process.env.C4_DEMO_VIDEO || !canRunChromium())("demo video", (
         title: "Can you beat it?",
         size: 92,
         subtitle: "Commit Four · free on the Chrome Web Store",
+        note: "Unofficial · not affiliated with GitHub",
       }),
     };
     const cardPage = await context.newPage();
@@ -214,10 +217,10 @@ describe.skipIf(!process.env.C4_DEMO_VIDEO || !canRunChromium())("demo video", (
     await page.goto(`https://github.com/${OWNER}?tab=overview&from=2016-12-01&to=2016-12-31`);
     const hud = page.locator(".commit-four-hud");
     await hud.getByText("No games yet").waitFor({ timeout: 30_000 });
-    await page.mouse.move(980, 120);
+    await page.mouse.move(1210, 330);
     // GitHub's heading only changes on reload; here it follows the graph, so the count climbs
     await page.evaluate((owner) => {
-      const h2 = document.querySelector(".js-calendar-graph h2");
+      const h2 = document.querySelector("#c4-total");
       setInterval(async () => {
         const html = await (
           await fetch(`/users/${owner}/contributions?from=2016-01-01&to=2016-12-31`)
@@ -256,24 +259,86 @@ describe.skipIf(!process.env.C4_DEMO_VIDEO || !canRunChromium())("demo video", (
     if (first !== "1920,1080") throw new Error(`screencast frames are ${first}, expected 1920,1080`);
 
     const pause = (ms: number) => page.waitForTimeout(ms);
+    /** Sound effects, at wall-clock seconds (the screencast's clock). */
+    const sounds: { t: number; sfx: Sfx }[] = [];
+    const sound = (sfx: Sfx) => sounds.push({ t: Date.now() / 1000, sfx });
+    /** Stretches the edit keeps at full length (the page is still, so few frames arrive). */
+    const holds: [number, number][] = [];
+    const hold = async (ms: number) => {
+      const from = Date.now() / 1000;
+      await pause(ms);
+      holds.push([from, Date.now() / 1000]);
+    };
     const caption = (text: string | null) => page.evaluate(captionScript(text));
     const glide = async (sel: string) => {
       const box = (await page.locator(sel).first().boundingBox())!;
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 14 });
     };
-    const clickAt = async (sel: string) => {
+    const clickAt = async (sel: string, sfx: Sfx = "pop") => {
       await glide(sel);
       await page.mouse.down();
+      sound(sfx);
       await pause(60);
       await page.mouse.up();
     };
+    /**
+     * The camera: a transform on <body>, so the cursor and captions (on <html>) stay put. "year"
+     * frames the heading, the whole year and the Commit Four panel; "board" moves in on the game,
+     * within the calendar card.
+     */
+    const camera = async (shot: "year" | "board") => {
+      sound("whoosh");
+      await page.evaluate((shot) => {
+        const b = document.body;
+        const was = b.style.transform;
+        b.style.transition = "none";
+        b.style.transform = "none";
+        const union = (sel: string) => {
+          const rs = [...document.querySelectorAll(sel)].map((e) => e.getBoundingClientRect());
+          const x0 = Math.min(...rs.map((r) => r.left));
+          const y0 = Math.min(...rs.map((r) => r.top));
+          return {
+            x0,
+            y0,
+            w: Math.max(...rs.map((r) => r.right)) - x0,
+            h: Math.max(...rs.map((r) => r.bottom)) - y0,
+          };
+        };
+        const year = union("#c4-total, .js-calendar-graph, .commit-four-hud");
+        const card = union(".js-calendar-graph");
+        const board = union("td.c4-cell");
+        b.style.transform = was;
+        void b.offsetWidth; // start the transition from where the camera was
+        b.style.transformOrigin = "0 0";
+        b.style.transition = "transform .8s cubic-bezier(.4, 0, .2, 1)";
+        const [W, H] = [innerWidth, innerHeight - 100]; // room at the bottom for the captions
+        let s: number;
+        let tx: number;
+        let ty: number;
+        if (shot === "year") {
+          s = Math.min((W - 48) / year.w, (H - 24) / year.h);
+          tx = (W - year.w * s) / 2 - year.x0 * s;
+          ty = 22 - year.y0 * s;
+        } else {
+          // the board centred, but never past the card's left edge (that's the sidebar)
+          s = Math.min(3.6, (H - 40) / card.h);
+          tx = Math.min(W / 2 - (board.x0 + board.w / 2) * s, 24 - card.x0 * s);
+          ty = (H - card.h * s) / 2 - card.y0 * s;
+        }
+        b.style.transform = `translate(${tx}px, ${ty}px) scale(${s})`;
+      }, shot);
+      await pause(850);
+    };
     const hudText = () => hud.evaluate((h) => h.shadowRoot?.textContent ?? "");
 
-    await pause(500);
+    // the wide shot first: a GitHub profile, then in to the graph
+    await hold(1100);
+    await camera("year");
     await glide(".commit-four-hud >> select");
+    sound("tick");
     await hud.locator("select").selectOption("perfect");
     await pause(350);
-    await clickAt(".commit-four-hud >> button[name=newGame]");
+    await clickAt(".commit-four-hud >> button[name=newGame]", "tick");
     await page.waitForFunction(() => document.querySelectorAll("td.c4-cell").length === 42, null, {
       timeout: 15_000,
     });
@@ -289,8 +354,9 @@ describe.skipIf(!process.env.C4_DEMO_VIDEO || !canRunChromium())("demo video", (
       if (i === plan.human.length - 1) {
         // the trap: point at the square the AI will win on, then block the other threat anyway
         await caption("Uh-oh. Two threats at once…");
+        sound("uhoh");
         await glide(`td.c4-cell[data-c4-col="${plan.moves.at(-1)}"]`);
-        await pause(700);
+        await hold(700);
       }
       await clickAt(`td.c4-cell[data-c4-col="${plan.human[i]}"]`);
       await page.waitForFunction(
@@ -301,27 +367,46 @@ describe.skipIf(!process.env.C4_DEMO_VIDEO || !canRunChromium())("demo video", (
         null,
         { timeout: 20_000 },
       );
+      sound("bloop"); // the AI's piece
       await pause(i === plan.human.length - 1 ? 200 : 380);
     }
     if (!/The AI won/.test(await hudText())) throw new Error(`expected an AI win: ${await hudText()}`);
-    await page.mouse.move(1150, 650, { steps: 10 });
+    const lostAt = Date.now() / 1000;
+    sounds.push({ t: lostAt + 0.3, sfx: "womp" });
+    await page.mouse.move(1180, 640, { steps: 10 });
     await caption("Perfect AI 1 · You 0");
-    // no waiting for every square to turn solid: the extension writes at most 6 times a minute
-    // (GitHub's guidance), so after a game this fast the last squares stay pending for a while
-    await pause(2200);
+    // in on the AI's four. No waiting for every square to turn solid: the extension writes at most
+    // 6 times a minute (GitHub's guidance), so after a game this fast the last squares stay pending
+    await hold(300);
+    await camera("board");
+    await hold(1500);
     await cdp.send("Page.stopScreencast");
     frames.push({ file: frames.at(-1)!.file, t: Date.now() / 1000 });
 
     // --- edit -------------------------------------------------------------------------------------
     // frames -> constant 30 fps; idle stretches (waiting on the AI or GitHub) are trimmed to keep
-    // the pace up, except the final hold
+    // the pace up, except the holds
     const list = [];
+    const durs: number[] = [];
     for (let i = 0; i < frames.length - 1; i++) {
-      const raw = frames[i + 1]!.t - frames[i]!.t;
-      const dur = i === frames.length - 2 ? Math.min(raw, 2.6) : Math.min(raw, 0.55);
-      list.push(`file '${frames[i]!.file}'`, `duration ${dur.toFixed(4)}`);
+      const [a, b] = [frames[i]!.t, frames[i + 1]!.t];
+      const held = holds.reduce(
+        (sum, [from, to]) => sum + Math.max(0, Math.min(b, to) - Math.max(a, from)),
+        0,
+      );
+      durs.push(Math.min(b - a, 0.55 + held));
+      list.push(`file '${frames[i]!.file}'`, `duration ${durs[i]!.toFixed(4)}`);
     }
     list.push(`file '${frames.at(-1)!.file}'`);
+    /** Where a wall-clock moment of the recording lands in the trimmed capture. */
+    const captureTime = (t: number) => {
+      let out = 0;
+      for (let i = 0; i < durs.length; i++) {
+        if (t < frames[i + 1]!.t) return out + Math.min(Math.max(0, t - frames[i]!.t), durs[i]!);
+        out += durs[i]!;
+      }
+      return out;
+    };
     writeFileSync(join(work, "frames.txt"), `ffconcat version 1.0\n${list.join("\n")}\n`);
     const capture = join(work, "capture.mp4");
     const ff = (args: string[]) =>
@@ -340,9 +425,9 @@ describe.skipIf(!process.env.C4_DEMO_VIDEO || !canRunChromium())("demo video", (
     const parts: { input: string[]; secs: number }[] = [
       { input: ["-loop", "1", "-framerate", "30", "-t", "1.7", "-i", join(work, "hook1.png")], secs: 1.7 },
       { input: ["-loop", "1", "-framerate", "30", "-t", "1.9", "-i", join(work, "hook2.png")], secs: 1.9 },
-      { input: ["-loop", "1", "-framerate", "30", "-t", "2.4", "-i", join(work, "title.png")], secs: 2.4 },
+      { input: ["-loop", "1", "-framerate", "30", "-t", "2.3", "-i", join(work, "title.png")], secs: 2.3 },
       { input: ["-i", capture], secs: captureSecs },
-      { input: ["-loop", "1", "-framerate", "30", "-t", "3.2", "-i", join(work, "end.png")], secs: 3.2 },
+      { input: ["-loop", "1", "-framerate", "30", "-t", "3.0", "-i", join(work, "end.png")], secs: 3.0 },
     ];
     const X = 0.3; // crossfade
     const filters = parts.map(
@@ -358,10 +443,31 @@ describe.skipIf(!process.env.C4_DEMO_VIDEO || !canRunChromium())("demo video", (
     }
     const total = offset + parts.at(-1)!.secs;
     filters.push(`[joined]fade=t=in:st=0:d=0.25,fade=t=out:st=${(total - 0.45).toFixed(3)}:d=0.45[out]`);
+
+    // --- sound -----------------------------------------------------------------------------------
+    const starts = parts.map((_, i) => parts.slice(0, i).reduce((sum, p) => sum + p.secs - X, 0));
+    const [, hook2At, titleAt, captureAt, endAt] = starts as [number, number, number, number, number];
+    const soundtrack = join(work, "soundtrack.wav");
+    writeFileSync(
+      soundtrack,
+      soundtrackWav({
+        secs: total,
+        dropAt: titleAt,
+        musicEnd: captureAt + captureTime(lostAt),
+        events: [
+          { t: hook2At + 0.2, sfx: "jump" },
+          { t: titleAt, sfx: "chime" },
+          ...sounds.map((s) => ({ t: captureAt + captureTime(s.t), sfx: s.sfx })),
+          { t: endAt + 0.15, sfx: "jingle" },
+        ],
+      }),
+    );
     const video = join(outDir, "commit-four-demo-1080p.mp4");
     ff([
       ...parts.flatMap((p) => p.input),
-      ...["-filter_complex", filters.join(";"), "-map", "[out]"],
+      ...["-i", soundtrack],
+      ...["-filter_complex", filters.join(";"), "-map", "[out]", "-map", `${parts.length}:a`],
+      ...["-c:a", "aac", "-b:a", "192k"],
       ...[
         "-c:v",
         "libx264",
