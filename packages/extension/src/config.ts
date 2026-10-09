@@ -6,7 +6,8 @@
 
 declare const __C4_CLIENT_ID__: string;
 
-const DEFAULT_CLIENT_ID = "";
+// "Commit Four" OAuth app (github.com/settings/applications), device flow enabled.
+const DEFAULT_CLIENT_ID = "Ov23lifjGJ78vzIzvZZt";
 
 export const GITHUB_CLIENT_ID: string =
   (typeof __C4_CLIENT_ID__ === "string" && __C4_CLIENT_ID__) || DEFAULT_CLIENT_ID;

@@ -1,5 +1,9 @@
 # Registering the Commit Four GitHub OAuth app
 
+> Done: the app is registered and its client ID (`Ov23lifjGJ78vzIzvZZt`) is the default in
+> `packages/extension/src/config.ts`. These steps are only needed for your own app (e.g. a fork that
+> wants its own name on the consent screen).
+
 "Sign in with GitHub" uses GitHub's device flow, which needs an OAuth app's **client ID** (public,
 not a secret — no client secret is used or needed). One app serves every user of the extension.
 
