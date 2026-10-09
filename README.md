@@ -7,6 +7,8 @@ or two. Every piece is a handful of backdated, empty commits in a dedicated boar
 **4 commits** for your pieces (darkest green) and **2** for the AI's (mid green). Contributions are
 a vanity metric anyway; this makes the point with style.
 
+▶ **[Watch the 25-second demo](https://youtu.be/i_M3oNOQUNA)**
+
 ```
  graph column = week, graph row = weekday (Mon top … Sat bottom)
 
@@ -43,8 +45,8 @@ a vanity metric anyway; this makes the point with style.
 
 ## Play in two minutes (no terminal)
 
-1. **Install the extension**: from the Chrome Web Store (listing pending), or for now download the
-   built zip, unzip it, and use `chrome://extensions` → Developer mode → **Load unpacked**.
+1. **Install the extension** from the [Chrome Web Store](https://chromewebstore.google.com/detail/cpbgpflpnknmfncknfehpkhbmfedoikl). (To run your own build
+   instead: unzip the built extension and use `chrome://extensions` → Developer mode → **Load unpacked**.)
 2. Click the extension's icon → **Sign in with GitHub** → enter the code GitHub shows you. GitHub
    lists your organizations too; you don't need to grant any of them.
 3. **Set up my board**: creates a `commit-four-board` repo for you (or reuses/claims one).

@@ -2,6 +2,8 @@
 
 > Last Updated: 2026-10-09
 
+Live listing: https://chromewebstore.google.com/detail/cpbgpflpnknmfncknfehpkhbmfedoikl
+
 ## Store Listing
 
 **Extension Name**
@@ -47,7 +49,7 @@ English
 | Screenshot 3 | 1280×800 | ✅ Ready | store-assets/screenshot-3-settings.png |
 | Small Promo Tile | 440×280 | ✅ Ready | store-assets/promo-small-440x280.png |
 | Marquee Promo Tile | 1400×560 | ✅ Ready | store-assets/promo-marquee-1400x560.png |
-| Promo video | YouTube link, 1920×1080 MP4 (~23 s) | ✅ Generated (not committed) | store-assets/commit-four-demo-1080p.mp4 + commit-four-demo-thumbnail.png |
+| Promo video | YouTube link, 1920×1080 MP4 with sound (~26 s) | ✅ Live: https://youtu.be/i_M3oNOQUNA | store-assets/commit-four-demo-1080p.mp4 + commit-four-demo-thumbnail.png (generated, not committed) |
 
 ### Screenshot Notes
 1. A game in progress in the 2016 view: the board outlined, your pieces dark, the AI's lighter, an earlier finished game to its left, and the panel saying it's your move with the timing line.
@@ -57,9 +59,9 @@ English
 They show the real extension on a mock profile page of a fictional account (`alex-codes`), with no GitHub logo. Regenerate after UI changes:
 `C4_STORE_ASSETS=1 npx vitest run packages/extension/test/store-assets.test.ts`
 
-The promo video is the same idea, scripted end to end: a joke hook, then a game the player loses to the Perfect AI (planned with the engine's own solver), captions, and a "Can you beat it?" end card. It needs ffmpeg with libx264:
+The promo video is the same idea, scripted end to end: a joke hook, then a fictional profile in GitHub's dark theme, a camera move in on the whole year, a game the player loses to the Perfect AI (planned with the engine's own solver), captions, and a "Can you beat it?" end card. The 8-bit soundtrack and sound effects are composed in code (`test/demoAudio.ts`, no samples) and timed to the recorded clicks. It needs ffmpeg with libx264 and AAC:
 `C4_DEMO_VIDEO=1 npx vitest run packages/extension/test/demo-video.test.ts`
-Upload the MP4 to YouTube and paste the link into Store listing → Global promo video.
+Upload the MP4 to YouTube and paste the link into Store listing → Global promo video (currently https://youtu.be/i_M3oNOQUNA).
 
 ## Permissions Justification
 
