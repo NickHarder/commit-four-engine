@@ -24,14 +24,26 @@ export const canRunChromium = (): boolean => {
 export async function launchWithExtension(
   buildDir: string,
   userDir: string,
-  opts: { localGitHub?: { hostResolverRules: string; spkiHash: string } } = {},
+  opts: {
+    localGitHub?: { hostResolverRules: string; spkiHash: string };
+    /**
+     * A real window instead of an emulated viewport, for screen recordings: CDP screencasts
+     * capture the window's actual page area at its actual scale, not Playwright's emulated one.
+     */
+    window?: { width: number; height: number; scale: number };
+  } = {},
 ): Promise<BrowserContext> {
   const local = opts.localGitHub;
+  const win = opts.window;
   // Playwright's headless mode can't load extensions; Chrome's own new headless mode can.
   const context = await chromium.launchPersistentContext(userDir, {
+    ...(win ? { viewport: null } : {}),
     headless: false,
     args: [
       "--headless=new",
+      ...(win
+        ? [`--window-size=${win.width},${win.height}`, `--force-device-scale-factor=${win.scale}`]
+        : []),
       `--disable-extensions-except=${buildDir}`,
       `--load-extension=${buildDir}`,
       ...(local

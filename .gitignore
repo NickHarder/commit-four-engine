@@ -8,3 +8,6 @@ coverage/
 packages/extension/build/
 test-results/
 playwright-report/
+
+# demo video outputs (regenerate with C4_DEMO_VIDEO=1; see packages/extension/CHROMEWEBSTORE.md)
+packages/extension/store-assets/commit-four-demo-*
