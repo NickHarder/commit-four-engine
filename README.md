@@ -39,7 +39,8 @@ a vanity metric anyway; this makes the point with style.
 
 1. **Install the extension**: from the Chrome Web Store (listing pending), or for now download the
    built zip, unzip it, and use `chrome://extensions` → Developer mode → **Load unpacked**.
-2. Click the extension's icon → **Sign in with GitHub** → enter the code GitHub shows you.
+2. Click the extension's icon → **Sign in with GitHub** → enter the code GitHub shows you. GitHub
+   lists your organizations too; you don't need to grant any of them.
 3. **Set up my board**: creates a `commit-four-board` repo for you (or reuses/claims one).
 4. **Open your board and play**: click a column on your 2016 graph, then **New game**.
 

@@ -20,7 +20,7 @@ Games are drawn in a past "season" year (2016, then 2015, …), so your recent a
 Squares show as "pending" until GitHub's graph catches up, and the game keeps going even when GitHub is slow.
 
 How to use it:
-1. Click the extension icon and choose "Sign in with GitHub", then enter the code GitHub shows you.
+1. Click the extension icon and choose "Sign in with GitHub", then enter the code GitHub shows you. You never need to give it access to any organization.
 2. Click "Set up my board": a board repository is created in your account (or an existing one is reused).
 3. Open the link to your board on your profile and click "New game".
 
