@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Commit Four",
   "short_name": "Commit Four",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Play four in a row against an AI by clicking your own GitHub contribution graph. Unofficial; not affiliated with GitHub.",
   "minimum_chrome_version": "123",
   "icons": {

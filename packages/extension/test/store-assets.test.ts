@@ -7,7 +7,7 @@
  * Skipped in normal test runs.
  */
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -86,6 +86,23 @@ const PROMO = `<!doctype html><html><head><meta charset="utf-8"><style>
 })()}</div>
 <div><h1>Commit Four</h1><p>Four in a row against an AI, played on your own GitHub contribution graph.</p></div>
 </body></html>`;
+
+/** The large (marquee) promo tile, 1400x560: the same design as the small tile, with more room. */
+const MARQUEE = PROMO.replace("width: 440px; height: 280px;", "width: 1400px; height: 560px;")
+  .replace("gap: 26px; padding: 0 30px;", "gap: 80px; padding: 0 120px;")
+  .replace(
+    "grid-template-columns: repeat(7, 18px); gap: 4px;",
+    "grid-template-columns: repeat(7, 46px); gap: 10px;",
+  )
+  .replace("width: 18px; height: 18px; border-radius: 3px;", "width: 46px; height: 46px; border-radius: 8px;")
+  .replace(
+    "outline: 1px solid #30363d; outline-offset: -1px; }",
+    "outline: 2px solid #30363d; outline-offset: -2px; }",
+  )
+  .replace("box-shadow: 0 0 0 2px #e3b341;", "box-shadow: 0 0 0 4px #e3b341;")
+  .replace("font-size: 32px;", "font-size: 84px;")
+  .replace("font: 15px/1.4", "font: 30px/1.4")
+  .replace("margin: 0 0 8px;", "margin: 0 0 20px;");
 
 describe.skipIf(!process.env.C4_STORE_ASSETS || !canRunChromium())("Chrome Web Store images", () => {
   let gh: FakeGitHub;
@@ -220,6 +237,18 @@ describe.skipIf(!process.env.C4_STORE_ASSETS || !canRunChromium())("Chrome Web S
     await options.addStyleTag({ content: "html { scrollbar-width: none; }" });
     await shoot(options, "screenshot-3-settings.png");
     await options.close();
+  }, 30_000);
+
+  it("store icon (the extension's own 128 px icon)", () => {
+    copyFileSync(join(buildDir, "icons", "icon-128.png"), join(outDir, "store-icon-128.png"));
+  });
+
+  it("marquee promo tile", async () => {
+    const tile = await context.newPage();
+    await tile.setViewportSize({ width: 1400, height: 560 });
+    await tile.setContent(MARQUEE);
+    await shoot(tile, "promo-marquee-1400x560.png");
+    await tile.close();
   }, 30_000);
 
   it("small promo tile", async () => {

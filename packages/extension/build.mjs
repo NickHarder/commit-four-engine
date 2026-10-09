@@ -42,21 +42,35 @@ if (process.argv.includes("--zip")) {
   console.log(`packaged ${zip}`);
 }
 
-/** A 4x4 grid of contribution-style squares with a winning diagonal. */
+/**
+ * A 4x4 corner of a board drawn as contribution squares: your winning diagonal in dark green, the
+ * AI's pieces in light green, empty squares grey. Transparent background, with the store's
+ * padding (16 px of 128), and anti-aliased rounded corners so it reads on light and dark toolbars.
+ */
 function icon(size) {
   const px = new Uint8Array(size * size * 4);
-  const gap = Math.max(1, Math.round(size / 16));
-  const cell = (size - gap * 5) / 4;
-  const colors = { dark: [0x21, 0x6e, 0x39], light: [0x9b, 0xe9, 0xa8], gold: [0xbf, 0x87, 0x00] };
+  const pad = size / 8;
+  const gap = Math.max(1, size / 32);
+  const cell = (size - 2 * pad - 3 * gap) / 4;
+  const radius = cell * 0.22;
+  const colors = { y: [0x21, 0x6e, 0x39], a: [0x9b, 0xe9, 0xa8], e: [0xc8, 0xd1, 0xda] };
+  const rows = ["eeey", "eeya", "eyaa", "yaya"]; // top to bottom
   for (let gy = 0; gy < 4; gy++) {
     for (let gx = 0; gx < 4; gx++) {
-      const c = gx === 3 - gy ? colors.gold : (gx + gy) % 2 ? colors.light : colors.dark;
-      const x0 = Math.round(gap + gx * (cell + gap));
-      const y0 = Math.round(gap + gy * (cell + gap));
-      for (let y = y0; y < Math.round(y0 + cell); y++) {
-        for (let x = x0; x < Math.round(x0 + cell); x++) {
+      const rgb = colors[rows[gy][gx]];
+      const x0 = pad + gx * (cell + gap);
+      const y0 = pad + gy * (cell + gap);
+      for (let y = Math.floor(y0); y < Math.ceil(y0 + cell); y++) {
+        for (let x = Math.floor(x0); x < Math.ceil(x0 + cell); x++) {
+          // coverage of this pixel by the rounded square (distance to the rounded edge, AA'd)
+          const cx = Math.min(Math.max(x + 0.5, x0 + radius), x0 + cell - radius);
+          const cy = Math.min(Math.max(y + 0.5, y0 + radius), y0 + cell - radius);
+          const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
+          const edge = Math.min(x + 0.5 - x0, x0 + cell - (x + 0.5), y + 0.5 - y0, y0 + cell - (y + 0.5));
+          const cover = Math.max(0, Math.min(1, d > 0 ? radius + 0.5 - d : edge + 0.5));
+          if (cover <= 0) continue;
           const i = (y * size + x) * 4;
-          px.set([...c, 255], i);
+          px.set([...rgb, Math.round(255 * cover)], i);
         }
       }
     }
