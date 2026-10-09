@@ -1,4 +1,4 @@
-/** Dedicated worker running the Connect 4 AI (solver + opening book). */
+/** Dedicated worker running the four-in-a-row AI (solver + opening book). */
 
 import { chooseMove, type Difficulty, Solver } from "@commit-four/core";
 import { PERFECT_BOOK } from "@commit-four/core/defaultBook";

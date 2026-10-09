@@ -292,7 +292,7 @@ async function ensureOffscreen(): Promise<void> {
     .createDocument({
       url: "offscreen.html",
       reasons: [chrome.offscreen.Reason.WORKERS],
-      justification: "Run the Connect 4 AI in a worker",
+      justification: "Run the four-in-a-row AI in a worker",
     })
     .finally(() => {
       creating = null;

@@ -1,5 +1,5 @@
 /**
- * Content script: turns the contribution graph on your own profile into the Connect 4 board.
+ * Content script: turns the contribution graph on your own profile into the four-in-a-row board.
  * Clicks paint pieces immediately ("pending"), the service worker makes the move, and the real
  * graph is polled until GitHub catches up, at which point the pending outline disappears.
  */
@@ -200,7 +200,7 @@ function hudView(v: View): HudView {
   if (!v.meta.configured) {
     return {
       ...base,
-      status: "Play Connect 4 on this graph. Open Settings to connect your board repo.",
+      status: "Play four in a row on this graph. Open Settings to connect your board repo.",
       ...(v.error ? { error: v.error } : {}),
     };
   }
@@ -514,12 +514,14 @@ function startPolling(opts: { now?: boolean } = {}): void {
 
 function timingNote(v: View): string {
   const t = v.timing;
-  const secs = (ms: number) => `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`;
+  // "in 0.0s" reads like a bug: anything under 0.1 s is "instantly"
+  const took = (what: string, ms: number) =>
+    ms < 100 ? `${what} instantly` : `${what} in ${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`;
   if (!t || t.graph === undefined) return "Your graph is up to date.";
   const parts = [
-    ...(t.ai !== undefined ? [`AI answered in ${secs(t.ai)}`] : []),
-    ...(t.saved !== undefined ? [`saved in ${secs(t.saved)}`] : []),
-    `GitHub caught up in ${secs(t.graph)}`,
+    ...(t.ai !== undefined ? [took("AI answered", t.ai)] : []),
+    ...(t.saved !== undefined ? [took("saved", t.saved)] : []),
+    took("GitHub caught up", t.graph),
   ];
   return `${parts.join(" · ")}.`;
 }
