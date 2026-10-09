@@ -2,6 +2,8 @@
 
 > Last Updated: 2026-10-09
 
+Live listing: https://chromewebstore.google.com/detail/cpbgpflpnknmfncknfehpkhbmfedoikl
+
 ## Store Listing
 
 **Extension Name**
