@@ -1,6 +1,7 @@
 /**
  * GitWriter: writes turns from a local bare clone with plumbing commands (no working tree), then
- * one non-force `git push`. Uses the user's existing git credentials; no GitHub token needed.
+ * one non-force `git push` (Start over is the one forced push, guarded by --force-with-lease).
+ * Uses the user's existing git credentials; no GitHub token needed.
  */
 
 import { execFile } from "node:child_process";
@@ -16,6 +17,7 @@ import {
   parseSentinel,
   parseState,
   type RemoteState,
+  type ResetRequest,
   SENTINEL_FILE,
   STATE_PATH,
   type WriteRequest,
@@ -194,5 +196,35 @@ export class GitWriter implements BoardWriter {
     }
     await git(dir, ["update-ref", this.trackingRef, parent, head]);
     return { head: parent, commits };
+  }
+
+  /** Start over: one new root commit with the head's files plus `req.files`, force-pushed. */
+  async reset(req: ResetRequest): Promise<WriteResult> {
+    const dir = this.opts.dir;
+    const head = await git(dir, ["rev-parse", this.trackingRef]);
+    if (head !== req.expectedHead) throw new ConflictError();
+    const tmp = await mkdtemp(join(tmpdir(), "commit-four-"));
+    let root: string;
+    try {
+      const env = { GIT_INDEX_FILE: join(tmp, "index") };
+      await git(dir, ["read-tree", `${head}^{tree}`], { env });
+      for (const f of req.files) {
+        const blob = await git(dir, ["hash-object", "-w", "--stdin"], { input: f.content });
+        await git(dir, ["update-index", "--add", "--cacheinfo", `100644,${blob},${f.path}`], { env });
+      }
+      const tree = await git(dir, ["write-tree"], { env });
+      root = await git(dir, ["commit-tree", "--no-gpg-sign", tree, "-m", req.message], { env: engineEnv() });
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
+    const ref = `refs/heads/${this.branch}`;
+    try {
+      await git(dir, ["push", "--quiet", `--force-with-lease=${ref}:${head}`, this.remote, `${root}:${ref}`]);
+    } catch (e) {
+      if (e instanceof GitError && /stale info|rejected/i.test(e.stderr)) throw new ConflictError();
+      throw e;
+    }
+    await git(dir, ["update-ref", this.trackingRef, root]);
+    return { head: root, commits: 1 };
   }
 }

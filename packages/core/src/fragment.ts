@@ -65,3 +65,9 @@ export function parseContributionCalendar(html: string): ParsedCalendar {
   days.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   return { from, to, days, privateProfile: /activity is private/i.test(html) };
 }
+
+/** True when a calendar view shows days and every one of them has zero contributions. */
+export function isEmptyCalendar(html: string): boolean {
+  const cal = parseContributionCalendar(html);
+  return !cal.privateProfile && cal.days.length > 0 && cal.days.every((d) => d.count === 0);
+}

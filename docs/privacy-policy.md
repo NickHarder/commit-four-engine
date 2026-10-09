@@ -13,7 +13,9 @@ GitHub contribution graph. It is an unofficial project, not affiliated with GitH
   browser's extension storage (or, for the command-line tool, in `~/.commit-four/config.json` on
   your computer, readable only by your user account).
 - **Your profile's contribution graph**: on your own GitHub profile page, the extension reads the
-  graph to draw the board and to check when new squares appear. This stays in your browser.
+  graph to draw the board and to check when new squares appear. When a new board year is needed,
+  it also reads your graph for past years, only to find one with no contributions. This stays in
+  your browser.
 
 ## Where data goes
 
@@ -30,8 +32,9 @@ shared with anyone.
 
 Remove the extension (or clear its settings) to delete the stored settings and token. Revoke the
 GitHub token at github.com/settings/personal-access-tokens. Delete `~/.commit-four` to remove the
-command-line tool's settings. Deleting your board repository removes the game's commits; GitHub
-may take a while to update your graph.
+command-line tool's settings. **Start over** in the extension settings erases every game from your
+board repository, and deleting the repository removes the game's commits; either way GitHub may take
+up to a day to update your graph.
 
 ## Contact
 

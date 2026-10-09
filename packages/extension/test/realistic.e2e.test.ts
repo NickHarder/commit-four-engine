@@ -13,6 +13,7 @@ import type { BrowserContext, Page } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { FakeGitHub } from "../../core/test/fakeGitHub";
 import { calendarHtml } from "../../core/test/fixtures";
+import { profilePage, withBackground } from "./fakeProfile";
 import { type LocalGitHub, startLocalGitHub } from "./githubServer";
 import { canRunChromium, launchWithExtension } from "./launch";
 
@@ -57,13 +58,13 @@ describe.skipIf(!canRunChromium())("browser-only mode against a caching GitHub",
             OWNER,
             url.searchParams.get("from")!,
             url.searchParams.get("to")!,
-            countsByDate(),
+            withBackground(countsByDate()),
           ),
         };
       if (url.pathname === `/${OWNER}`)
         return {
           status: 200,
-          body: `<!doctype html><html><head><meta name="user-login" content="${OWNER}"></head><body><main>${calendarHtml(OWNER, "2016-01-01", "2016-12-31", countsByDate())}</main></body></html>`,
+          body: profilePage(OWNER, url, withBackground(countsByDate())),
         };
       return { status: 404, body: "" };
     });

@@ -1,6 +1,7 @@
 /**
  * Writers turn a render plan into commits in the board repo. Every write is one atomic ref
- * update, never a force push. Piece commits are empty commits authored by the owner on the
+ * update, never a force push (the one exception is `reset`, Start over, which replaces the
+ * branch's whole history on purpose). Piece commits are empty commits authored by the owner on the
  * board day (noon UTC); the final commit updates state/game.json + state/board.svg and is authored by
  * ENGINE_AUTHOR, whose reserved `.invalid` email never counts as a contribution.
  */
@@ -20,6 +21,14 @@ export interface WriteRequest {
   files: { path: string; content: string }[];
   message: string;
   /** Head the plan was computed against; the write fails with ConflictError if the branch moved. */
+  expectedHead: string;
+}
+
+/** Start over: the branch becomes one new root commit with the head's files plus `files`. */
+export interface ResetRequest {
+  files: { path: string; content: string }[];
+  message: string;
+  /** The reset fails with ConflictError if the branch moved since this head was read. */
   expectedHead: string;
 }
 
@@ -46,6 +55,7 @@ export interface BoardWriter {
   readonly kind: "git" | "api";
   readState(opts?: { refresh?: boolean }): Promise<RemoteState>;
   write(req: WriteRequest): Promise<WriteResult>;
+  reset(req: ResetRequest): Promise<WriteResult>;
 }
 
 export class ConflictError extends Error {
@@ -233,6 +243,39 @@ export class ApiWriter implements BoardWriter {
       throw e;
     }
     return { head: stateCommit.sha, commits: pieceCommitCount(req.batches) + 1 };
+  }
+
+  /**
+   * Replaces the branch's history with one root commit, authored by ENGINE_AUTHOR (never counted),
+   * keeping the head's files and writing `files` over them. The old commits stop being on the
+   * default branch, so GitHub drops their squares from the graph.
+   */
+  async reset(req: ResetRequest): Promise<WriteResult> {
+    const { owner, repo, branch } = this.opts;
+    this.reserve(3);
+    const head = await this.headSha();
+    if (head !== req.expectedHead) throw new ConflictError();
+    const base = await this.json<{ tree: { sha: string } }>(
+      "GET",
+      `/repos/${owner}/${repo}/git/commits/${head}`,
+    );
+    const tree = await this.mutate<{ sha: string }>("POST", `/repos/${owner}/${repo}/git/trees`, {
+      base_tree: base.tree.sha,
+      tree: req.files.map((f) => ({ path: f.path, mode: "100644", type: "blob", content: f.content })),
+    });
+    const nowIso = new Date(this.opts.now()).toISOString();
+    const root = await this.mutate<{ sha: string }>("POST", `/repos/${owner}/${repo}/git/commits`, {
+      message: req.message,
+      tree: tree.sha,
+      parents: [],
+      author: { ...ENGINE_AUTHOR, date: nowIso },
+      committer: { ...ENGINE_AUTHOR, date: nowIso },
+    });
+    await this.mutate("PATCH", `/repos/${owner}/${repo}/git/refs/heads/${branch}`, {
+      sha: root.sha,
+      force: true,
+    });
+    return { head: root.sha, commits: 1 };
   }
 
   private reserve(cost: number): void {

@@ -8,10 +8,15 @@ import {
   applyMove,
   type BoardState,
   boardCells,
+  boardSeasons,
   contributionsFragmentPath,
   currentGame,
+  findEmptySeason,
   type GameRecord,
   gamePieces,
+  initialState,
+  isEmptyCalendar,
+  needsNewSeason,
   parseContributionCalendar,
   parseMoves,
   playerToMove,
@@ -28,6 +33,8 @@ interface View {
   cells: Map<string, HTMLTableCellElement>;
   /** Contribution counts GitHub reports for each displayed day. */
   real: Map<string, number>;
+  /** The level GitHub shades each displayed day with (before any optimistic painting). */
+  levels: Map<string, number>;
   state: BoardState | null;
   meta: Extract<Response, { ok: true }> | null;
   writes: WriteInfo | null;
@@ -60,10 +67,12 @@ function attach(): void {
   if (!viewer || viewer.toLowerCase() !== cal.login.toLowerCase()) return; // only on your own profile
   const hud = new Hud(onHudAction);
   cal.container.after(hud.host);
+  const cells = dayCells(cal.container);
   view = {
     cal,
-    cells: dayCells(cal.container),
+    cells,
     real: pageCounts(cal.container),
+    levels: new Map([...cells].map(([date, td]) => [date, Number(td.dataset.level ?? 0)])),
     state: null,
     meta: null,
     writes: null,
@@ -201,6 +210,12 @@ function hudView(v: View): HudView {
   const title = `Commit Four · ${v.meta.repo} (${v.meta.mode === "companion" ? "local helper" : "browser only"})`;
   const sync = syncText(v);
   const error = v.error ?? undefined;
+  const warning = shadingWarning(v);
+  const extras = {
+    ...(sync ? { sync } : {}),
+    ...(error ? { error } : {}),
+    ...(warning ? { warning } : {}),
+  };
   const current = v.state ? currentGame(v.state) : null;
   const shown = shownGame(v);
   if (current && !inRange(v, current)) {
@@ -214,8 +229,7 @@ function hudView(v: View): HudView {
       },
       canNewGame: false,
       canResign: true,
-      ...(sync ? { sync } : {}),
-      ...(error ? { error } : {}),
+      ...extras,
     };
   }
   if (current) {
@@ -232,8 +246,7 @@ function hudView(v: View): HudView {
       canResign: !v.busy,
       canChangeDifficulty: !v.busy,
       difficulty: current.difficulty,
-      ...(sync ? { sync } : {}),
-      ...(error ? { error } : {}),
+      ...extras,
     };
   }
   const last = shown ?? v.state?.games.at(-1) ?? null;
@@ -250,9 +263,24 @@ function hudView(v: View): HudView {
     status: `${result} Start a new one?`,
     canNewGame: !v.busy,
     canResign: false,
-    ...(sync ? { sync } : {}),
-    ...(error ? { error } : {}),
+    ...extras,
   };
+}
+
+/**
+ * GitHub's real shading vs what Commit Four aims for (yours level 4, the AI's level 2). Only
+ * checked on a full calendar-year view of a board year, once GitHub shows every square, and once
+ * the year has a square of yours (until then the AI's opening square is the top of the scale).
+ */
+function shadingWarning(v: View): string | null {
+  const year = v.cal.from.slice(0, 4);
+  if (!v.state || v.cal.from !== `${year}-01-01` || v.cal.to !== `${year}-12-31`) return null;
+  if (pendingDates().length > 0) return null;
+  const pieces = v.state.games.filter((g) => g.placement.season === Number(year)).flatMap(gamePieces);
+  if (!pieces.some((p) => p.player === "human")) return null;
+  const off = pieces.filter((p) => v.levels.get(p.date) !== (p.player === "human" ? 4 : 2)).length;
+  if (off === 0) return null;
+  return `GitHub is shading ${off} of this year's board squares differently than expected, so your pieces and the AI's may look alike. Other activity in ${year}, or a change in how GitHub picks shades, can cause this.`;
 }
 
 function syncText(v: View): string | undefined {
@@ -360,9 +388,27 @@ async function onHudAction(a: HudAction): Promise<void> {
   v.error = null;
   v.timing = { start: Date.now() };
   render();
+  let season: number | undefined;
+  if (a.type === "newGame") {
+    const picked = await pickSeason(v);
+    if (view !== v) return;
+    if (typeof picked === "string") {
+      v.busy = false;
+      v.error = picked;
+      v.syncNote = null;
+      render();
+      return;
+    }
+    season = picked ?? undefined;
+  }
   const req: Request =
     a.type === "newGame"
-      ? { type: "c4:newGame", difficulty: a.difficulty, humanFirst: a.humanFirst }
+      ? {
+          type: "c4:newGame",
+          difficulty: a.difficulty,
+          humanFirst: a.humanFirst,
+          ...(season !== undefined ? { season } : {}),
+        }
       : a.type === "difficulty"
         ? { type: "c4:setDifficulty", gameId, difficulty: a.difficulty }
         : { type: "c4:resign", gameId };
@@ -381,6 +427,37 @@ async function onHudAction(a: HudAction): Promise<void> {
   }
   render();
   startPolling();
+}
+
+/**
+ * The year for the next game when the board's years are full: the newest past year whose graph
+ * (as you see it) is empty. Null when an existing year has room; a string is an error to show.
+ */
+async function pickSeason(v: View): Promise<number | null | string> {
+  const state = v.state ?? initialState(v.cal.login);
+  if (!needsNewSeason(state)) return null;
+  v.syncNote = "Looking for an empty year on your graph for the board…";
+  render();
+  try {
+    const year = await findEmptySeason({
+      exclude: boardSeasons(state),
+      isEmpty: async (y) => {
+        const res = await fetch(contributionsFragmentPath(v.cal.login, `${y}-01-01`, `${y}-12-31`), {
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: { Accept: "text/html" },
+        });
+        if (!res.ok) throw new Error(`GitHub answered ${res.status} for ${y}`);
+        return isEmptyCalendar(await res.text());
+      },
+    });
+    v.syncNote = null;
+    return (
+      year ?? "Every past year on your graph has contributions, so there's no empty year to put a board in."
+    );
+  } catch (e) {
+    return `Couldn't read your graph to pick a year for the board (${e instanceof Error ? e.message : String(e)}). Try again in a moment.`;
+  }
 }
 
 // --- confirmation polling -----------------------------------------------------------------------
@@ -406,6 +483,7 @@ function startPolling(opts: { now?: boolean } = {}): void {
       for (const d of cal.days) {
         if (d.count < 0) continue;
         v.real.set(d.date, d.count);
+        v.levels.set(d.date, d.level);
         const td = v.cells.get(d.date);
         if (!td) continue;
         // keep GitHub's own squares fresh too

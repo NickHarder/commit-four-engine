@@ -146,6 +146,8 @@ export class GameEngine {
   async newGame(opts: {
     difficulty: Difficulty;
     humanFirst: boolean;
+    /** A verified-empty year for when the board's years are full (see findEmptySeason). */
+    season?: number;
     rolling?: NonNullable<Parameters<typeof startGame>[1]["rolling"]>;
   }): Promise<TurnResult> {
     let next = startGame(this.current(), { ...opts, now: this.now() });
@@ -178,6 +180,33 @@ export class GameEngine {
     if (!game || game.id !== gameId) throw new StaleMoveError(this.current());
     this.state = resign(this.current(), this.now());
     return { state: this.state, aiCol: null, written: this.enqueueSync() };
+  }
+
+  /**
+   * Start over: erases every game. The branch becomes one fresh commit with the same files and an
+   * empty state, so the old piece commits leave the default branch and GitHub drops their squares
+   * (its docs say stats can take about a day to refresh). Runs after any queued writes.
+   */
+  startOver(): Promise<BoardState> {
+    const run = this.queue.then(async () => {
+      const remote = await this.opts.writer.readState({ refresh: true });
+      this.checkRemote(remote);
+      const state = initialState(this.opts.owner, this.now());
+      const result = await this.opts.writer.reset({
+        files: [
+          { path: STATE_PATH, content: `${JSON.stringify(state, null, 2)}\n` },
+          { path: SVG_PATH, content: renderBoardSvg(null) },
+        ],
+        message: "c4: start over (all games erased)",
+        expectedHead: remote.head,
+      });
+      this.state = state;
+      this.head = result.head;
+      this.opts.onEvent?.({ type: "resynced", state });
+      return state;
+    });
+    this.queue = run.catch(() => undefined);
+    return run;
   }
 
   /** Waits for all queued writes. */

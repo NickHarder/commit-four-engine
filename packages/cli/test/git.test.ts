@@ -105,6 +105,42 @@ describe("GitWriter", () => {
     expect(log.filter((c) => c.email === author.email)).toHaveLength(14); // the anchor
   });
 
+  it("starts over with one forced root commit, and refuses if the remote moved", async () => {
+    const writer = new GitWriter({ dir: local });
+    await writer.bootstrap(boardFiles("NickHarder", "b1"), "c4: set up");
+    const engine = new GameEngine({
+      writer,
+      owner: "NickHarder",
+      pieceAuthor: author,
+      chooser: () => 3,
+      now: () => new Date("2026-10-07T12:00:00Z"),
+    });
+    await engine.load();
+    await (await engine.newGame({ difficulty: "casual", humanFirst: true })).written;
+    await (await engine.move(1, 0, 3)).written;
+    expect(remoteLog().filter((c) => c.email === author.email).length).toBeGreaterThan(0);
+
+    const state = await engine.startOver();
+    expect(state.games).toEqual([]);
+    const log = remoteLog();
+    expect(log).toHaveLength(1);
+    expect(log[0]).toMatchObject({
+      email: "engine@commit-four.invalid",
+      message: "c4: start over (all games erased)",
+    });
+    expect(JSON.parse(sh(remote, "show", `main:${STATE_PATH}`)).games).toEqual([]);
+    expect(sh(remote, "show", "main:.commit-four-board")).toContain("NickHarder");
+
+    // someone else pushes after our last read: the reset must not clobber it
+    const head = sh(remote, "rev-parse", "main");
+    const other = sh(remote, "commit-tree", `${head}^{tree}`, "-p", head, "-m", "external");
+    sh(remote, "update-ref", "refs/heads/main", other);
+    await expect(
+      writer.reset({ files: [], message: "c4: start over", expectedHead: (await writer.readState()).head }),
+    ).rejects.toThrow(/changed underneath/);
+    expect(sh(remote, "rev-parse", "main")).toBe(other);
+  });
+
   it("refuses repos without a sentinel", async () => {
     const other = join(root, "plain");
     sh(root, "clone", "--quiet", remote, other);

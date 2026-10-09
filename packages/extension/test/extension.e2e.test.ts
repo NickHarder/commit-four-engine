@@ -14,6 +14,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createHelperServer } from "../../cli/src/server";
 import { FakeGitHub } from "../../core/test/fakeGitHub";
 import { calendarHtml } from "../../core/test/fixtures";
+import { profilePage, withBackground } from "./fakeProfile";
 import { canRunChromium, launchWithExtension } from "./launch";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -75,14 +76,15 @@ describe.skipIf(!canRun)("extension on a profile page (companion mode)", () => {
             OWNER,
             url.searchParams.get("from")!,
             url.searchParams.get("to")!,
-            countsByDate(),
+            withBackground(countsByDate()),
           ),
         });
       }
       if (url.pathname === `/${OWNER}`) {
-        const body = `<!doctype html><html><head><meta name="user-login" content="${OWNER}"><title>${OWNER}</title></head>
-          <body><main><h1>${OWNER}</h1>${calendarHtml(OWNER, "2016-01-01", "2016-12-31", countsByDate())}</main></body></html>`;
-        return route.fulfill({ contentType: "text/html", body });
+        return route.fulfill({
+          contentType: "text/html",
+          body: profilePage(OWNER, url, withBackground(countsByDate())),
+        });
       }
       return route.fulfill({ status: 404, body: "not found" });
     });

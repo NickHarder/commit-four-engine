@@ -7,11 +7,12 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { initialState, SENTINEL_FILE, STATE_PATH } from "@commit-four/core";
+import { addDays, initialState, SENTINEL_FILE, STATE_PATH } from "@commit-four/core";
 import type { BrowserContext, Page } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { FakeGitHub } from "../../core/test/fakeGitHub";
 import { calendarHtml } from "../../core/test/fixtures";
+import { profilePage, withBackground } from "./fakeProfile";
 import { canRunChromium, launchWithExtension } from "./launch";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -26,11 +27,18 @@ describe.skipIf(!canRun)("extension on a profile page (browser-only mode)", () =
   let page: Page;
   let userDir: string;
   let buildDir: string;
+  /** Real (non-game) activity the owner adds during the test. */
+  const extra = new Map<string, number>();
   const countsByDate = () => {
     const out = new Map<string, number>();
     for (const c of gh.history())
       if (c.author.email === EMAIL)
         out.set(c.author.date.slice(0, 10), (out.get(c.author.date.slice(0, 10)) ?? 0) + 1);
+    return out;
+  };
+  const graph = () => {
+    const out = withBackground(countsByDate());
+    for (const [d, n] of extra) out.set(d, (out.get(d) ?? 0) + n);
     return out;
   };
 
@@ -57,18 +65,13 @@ describe.skipIf(!canRun)("extension on a profile page (browser-only mode)", () =
       if (url.pathname === `/users/${OWNER}/contributions`) {
         return route.fulfill({
           contentType: "text/html",
-          body: calendarHtml(
-            OWNER,
-            url.searchParams.get("from")!,
-            url.searchParams.get("to")!,
-            countsByDate(),
-          ),
+          body: calendarHtml(OWNER, url.searchParams.get("from")!, url.searchParams.get("to")!, graph()),
         });
       }
       if (url.pathname === `/${OWNER}`) {
         return route.fulfill({
           contentType: "text/html",
-          body: `<!doctype html><html><head><meta name="user-login" content="${OWNER}"></head><body><main>${calendarHtml(OWNER, "2016-01-01", "2016-12-31", countsByDate())}</main></body></html>`,
+          body: profilePage(OWNER, url, graph()),
         });
       }
       return route.fulfill({ status: 404, body: "" });
@@ -115,5 +118,47 @@ describe.skipIf(!canRun)("extension on a profile page (browser-only mode)", () =
     expect(counts.get("2016-01-01")).toBe(14);
     expect(counts.get("2016-01-16")).toBe(4); // column 1 bottom = first Saturday of slot 0
     expect([...counts.values()].filter((n) => n === 2)).toHaveLength(1); // one AI square
+  }, 90_000);
+
+  it("warns when GitHub shades the board differently than expected", async () => {
+    const hud = page.locator(".commit-four-hud");
+    expect(await hud.evaluate((h) => h.shadowRoot?.textContent ?? "")).not.toMatch(
+      /differently than expected/,
+    );
+    // a month of steady real activity lands in 2016 (one huge day wouldn't matter: it's an
+    // outlier). GitHub's scale now tops out at 10, and the pieces fade to levels 2 and 1
+    for (let i = 0; i < 30; i++) extra.set(addDays("2016-06-01", i), 10);
+    await page.reload();
+    await hud.getByText(/shading \d+ of this year's board squares differently than expected/).waitFor({
+      timeout: 30_000,
+    });
+  }, 60_000);
+
+  it("starts over from Settings, and the next board skips a year with other activity", async () => {
+    const sw = context.serviceWorkers()[0]!;
+    const options = await context.newPage();
+    await options.goto(`chrome-extension://${new URL(sw.url()).host}/options.html`);
+    await options.getByRole("button", { name: "Erase all games…" }).click();
+    const go = options.getByRole("button", { name: "Erase everything" });
+    expect(await go.isDisabled()).toBe(true);
+    await options.getByLabel("Type the board repo name to confirm").fill("board");
+    await go.click();
+    await options.getByText(/Done: your board is empty/).waitFor({ timeout: 15_000 });
+    expect(gh.history()).toHaveLength(1);
+    expect(JSON.parse(gh.file(STATE_PATH)!).games).toEqual([]);
+    expect(JSON.parse(gh.file(SENTINEL_FILE)!).owner).toBe(OWNER);
+    await options.close();
+
+    // the open board hears about it, and a new game avoids 2016 (it has the owner's own activity now)
+    const hud = page.locator(".commit-four-hud");
+    await hud.getByText("No games yet").waitFor({ timeout: 15_000 });
+    await page.getByRole("button", { name: "New game" }).click();
+    await page.waitForURL(/from=2015-12-01/, { timeout: 15_000 });
+    await page.waitForFunction(() => document.querySelectorAll("td.c4-cell").length === 42, null, {
+      timeout: 15_000,
+    });
+    await expect
+      .poll(() => JSON.parse(gh.file(STATE_PATH)!).games[0]?.placement.season, { timeout: 15_000 })
+      .toBe(2015);
   }, 90_000);
 });

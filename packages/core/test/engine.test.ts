@@ -99,6 +99,29 @@ describe("GameEngine + ApiWriter", () => {
     expect(JSON.parse(gh.file(STATE_PATH)!).anchors).toEqual([{ date: "2016-01-01", count: 14 }]);
   });
 
+  it("starts over: one fresh commit, same files, no games, and play goes on", async () => {
+    const { gh, engine } = setup({ "README.md": "# my board\n" });
+    await engine.load();
+    await (await engine.newGame({ difficulty: "casual", humanFirst: true })).written;
+    await (await engine.move(1, 0, 3)).written;
+    expect(countsByDate(gh, author.email)).not.toEqual({});
+
+    const state = await engine.startOver();
+    expect(state.games).toEqual([]);
+    const history = gh.history();
+    expect(history).toHaveLength(1);
+    expect(history[0]!.parents).toEqual([]);
+    expect(history[0]!.author.email).toBe("engine@commit-four.invalid");
+    expect(countsByDate(gh, author.email)).toEqual({});
+    expect(gh.file("README.md")).toBe("# my board\n");
+    expect(JSON.parse(gh.file(SENTINEL_FILE)!).owner).toBe(OWNER);
+    expect(JSON.parse(gh.file(STATE_PATH)!)).toMatchObject({ games: [], anchors: [] });
+
+    // play goes on from the empty board
+    await (await engine.newGame({ difficulty: "casual", humanFirst: true, season: 2016 })).written;
+    expect(gh.history().length).toBeGreaterThan(1);
+  });
+
   it("coalesces moves made while a write is in flight and stays idempotent on reload", async () => {
     const { gh, engine } = setup();
     await engine.load();

@@ -34,6 +34,12 @@ Consequences:
   `state.test.ts`). The one exception is the AI's opening square before any human square exists
   that year, which renders at level 4 until the human's first move lands. Older boards are topped
   up from 4 to 14 commits on their next move.
+- All of this assumes the year holds nothing but the game, so the board's year is picked per
+  owner: the newest year at least two years back (never overlapping the default last-12-months
+  view) whose graph shows zero contributions, checked from the owner's own view of the graph when
+  a new year is needed. One stray big day in that year later is harmless (GitHub treats it as an
+  outlier); steady real activity is not, and the panel warns when GitHub's shades for the pieces
+  stop matching (`levels.test.ts` has both cases).
 - {0, 2, 4} is the only three-shade set without a near-identical pair across GitHub's nine
   palettes (per the mossaic palette study). A full game costs ≤ ~130 commits.
 - The blueprint's 600/450/150 "anchor" scheme gives levels 4/3/1, not 4/4/2; with real activity

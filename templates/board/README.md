@@ -11,8 +11,8 @@ GitHub contribution graph, and every piece on the graph is a handful of backdate
 | mid green (2 commits) | the AI's piece |
 | one dark square on Jan 1 | the season's scale anchor (14 commits; sets the shading so your pieces and the AI's differ) |
 
-Games are drawn in past "season" years (2016, then 2015, ...), six boards per year. Open the season
-year on the profile to see them. The full move history lives in [`state/game.json`](state/game.json).
+Games are drawn in past "season" years: the newest past year with no other contributions, six
+boards per year, then the next empty year. Open that year on the profile to see them. The full move history lives in [`state/game.json`](state/game.json).
 
 Made with [Commit Four](https://github.com/NickHarder/commit-four-engine). Unofficial; not affiliated with GitHub.
 

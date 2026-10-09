@@ -63,6 +63,24 @@ describe("GitHub level formula", () => {
     expect([levels.get("2016-01-01"), levels.get("2016-01-16"), levels.get("2016-01-23")]).toEqual([4, 4, 2]);
   });
 
+  it("keeps the pieces' shades through one big unrelated day, but not through steady activity", () => {
+    const board = new Map([
+      ["2016-01-01", 14],
+      ["2016-01-16", 4],
+      ["2016-01-23", 2],
+    ]);
+    const shades = (extra: [string, number][]) => {
+      const levels = computeLevels(year(new Map([...board, ...extra])));
+      return [levels.get("2016-01-16"), levels.get("2016-01-23")];
+    };
+    expect(shades([])).toEqual([4, 2]);
+    // a single 40-commit day is an outlier: GitHub leaves it out of the scale
+    expect(shades([["2016-06-15", 40]])).toEqual([4, 2]);
+    // a month of 10-commit days is the new normal: the scale tops out at 10 and the pieces fade
+    const month = Array.from({ length: 30 }, (_, i): [string, number] => [addDays("2016-06-01", i), 10]);
+    expect(shades(month)).toEqual([2, 1]);
+  });
+
   it("uses exact quarters of the top of the scale", () => {
     expect(quartileBoundaries([0, 1, 2, 0, 0])).toEqual([0, 0.5, 1, 1.5]);
     expect(levelFor(1, [0, 0.5, 1, 1.5])).toBe(2);

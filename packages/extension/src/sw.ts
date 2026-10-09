@@ -9,6 +9,7 @@ import {
   ApiWriter,
   type BoardState,
   GameEngine,
+  needsNewSeason,
   StaleMoveError,
   UnclaimedBoardError,
 } from "@commit-four/core";
@@ -39,6 +40,8 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
   if (!isRequest(message) || !trustedSender(sender)) return false;
   (async () => {
     try {
+      if (message.type === "c4:startOver" && !fromExtensionPage(sender))
+        throw new Error("Start over is only available from the Commit Four settings page");
       sendResponse(await handle(message, sender.tab));
     } catch (e) {
       sendResponse(errorResponse(e));
@@ -53,6 +56,11 @@ function trustedSender(sender: chrome.runtime.MessageSender): boolean {
   if (sender.id !== chrome.runtime.id) return false;
   const url = sender.url ?? "";
   return url.startsWith("https://github.com/") || url.startsWith(chrome.runtime.getURL(""));
+}
+
+function fromExtensionPage(sender: chrome.runtime.MessageSender): boolean {
+  // content scripts report the web page's URL; only extension pages report a chrome-extension:// URL
+  return (sender.url ?? "").startsWith(chrome.runtime.getURL(""));
 }
 
 async function restrictStorage(): Promise<void> {
@@ -127,7 +135,11 @@ async function companion(req: Request, s: Settings, base: Base): Promise<Respons
       return { ...base, state: r.state ?? null, ...(r.writes ? { writes: r.writes } : {}) };
     }
     case "c4:newGame": {
-      const r = await call("/v1/new-game", { difficulty: req.difficulty, humanFirst: req.humanFirst });
+      const r = await call("/v1/new-game", {
+        difficulty: req.difficulty,
+        humanFirst: req.humanFirst,
+        ...(req.season !== undefined ? { season: req.season } : {}),
+      });
       return { ...base, state: r.state ?? null, aiCol: r.aiCol ?? null };
     }
     case "c4:move": {
@@ -140,6 +152,10 @@ async function companion(req: Request, s: Settings, base: Base): Promise<Respons
     }
     case "c4:setDifficulty": {
       const r = await call("/v1/difficulty", { gameId: req.gameId, difficulty: req.difficulty });
+      return { ...base, state: r.state ?? null };
+    }
+    case "c4:startOver": {
+      const r = await call("/v1/start-over", { confirm: true });
       return { ...base, state: r.state ?? null };
     }
     default:
@@ -236,9 +252,16 @@ async function browserOnly(
       return { ...base, state: e.current(), writes };
     case "c4:newGame":
       return done(
-        await withFreshRetry(e, writes, () =>
-          e.newGame({ difficulty: req.difficulty, humanFirst: req.humanFirst }),
-        ),
+        await withFreshRetry(e, writes, () => {
+          // a new year must come from a check of the owner's graph, never a guess
+          if (req.season === undefined && needsNewSeason(e.current()))
+            throw new Error("Reload the page so Commit Four can pick an empty year for the next board.");
+          return e.newGame({
+            difficulty: req.difficulty,
+            humanFirst: req.humanFirst,
+            ...(req.season !== undefined ? { season: req.season } : {}),
+          });
+        }),
       );
     case "c4:move":
       return done(await withFreshRetry(e, writes, () => e.move(req.gameId, req.ply, req.col)));
@@ -246,6 +269,9 @@ async function browserOnly(
       return done(await withFreshRetry(e, writes, () => e.resign(req.gameId)));
     case "c4:setDifficulty":
       return done(await withFreshRetry(e, writes, () => e.setDifficulty(req.gameId, req.difficulty)));
+    case "c4:startOver":
+      // the engine broadcasts the empty state to open boards ("resynced")
+      return { ...base, state: await e.startOver(), writes };
     default:
       throw new Error("unsupported request");
   }

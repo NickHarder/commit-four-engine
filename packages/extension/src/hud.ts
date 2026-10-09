@@ -13,6 +13,8 @@ export interface HudView {
   status: string;
   sync?: string;
   error?: string;
+  /** Something looks off but play can go on (e.g. GitHub shading the board unexpectedly). */
+  warning?: string;
   link?: { href: string; label: string };
   canNewGame: boolean;
   canResign: boolean;
@@ -30,6 +32,7 @@ h2 { all: unset; display: block; font-weight: 600; font-size: 13px; }
 .status { margin: 4px 0 0; }
 .sync { margin: 2px 0 0; color: var(--fgColor-muted, #59636e); }
 .error { margin: 4px 0 0; color: var(--fgColor-danger, #d1242f); }
+.warning { margin: 4px 0 0; color: var(--fgColor-attention, #9a6700); }
 .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
 button, select { font: inherit; color: inherit; background: var(--button-default-bgColor-rest, #f6f8fa);
   border: 1px solid var(--button-default-borderColor-rest, #d1d9e0); border-radius: 6px; padding: 2px 10px; cursor: pointer; }
@@ -47,6 +50,7 @@ export class Hud {
     status: HTMLElement;
     sync: HTMLElement;
     error: HTMLElement;
+    warning: HTMLElement;
     link: HTMLAnchorElement;
     difficulty: HTMLSelectElement;
     humanFirst: HTMLInputElement;
@@ -68,6 +72,7 @@ export class Hud {
       <p class="status" role="status" aria-live="polite"></p>
       <p class="sync" aria-live="polite"></p>
       <p class="error" role="alert" hidden></p>
+      <p class="warning" role="status" hidden></p>
       <p class="link" hidden><a target="_self"></a></p>
       <div class="controls">
         <label>Difficulty <select name="difficulty"></select></label>
@@ -83,6 +88,7 @@ export class Hud {
       status: q(".status"),
       sync: q(".sync"),
       error: q(".error"),
+      warning: q(".warning"),
       link: q(".link a"),
       difficulty: q("select"),
       humanFirst: q('input[name="humanFirst"]'),
@@ -122,6 +128,8 @@ export class Hud {
     this.el.sync.textContent = v.sync ?? "";
     this.el.error.hidden = !v.error;
     this.el.error.textContent = v.error ?? "";
+    this.el.warning.hidden = !v.warning;
+    this.el.warning.textContent = v.warning ?? "";
     const linkP = this.el.link.parentElement!;
     linkP.hidden = !v.link;
     if (v.link) {

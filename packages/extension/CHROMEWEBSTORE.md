@@ -16,13 +16,13 @@ Commit Four turns the contribution graph on your own GitHub profile into a Conne
 Click any column of the board on your profile and your piece drops in instantly. The AI answers within a couple of seconds. Each piece becomes a few real (empty, backdated) commits in a separate board repository you own, so the squares really appear on your graph: your pieces in the darkest green, the AI's in a lighter green.
 
 Choose Casual, Hard or Perfect. Perfect never gives away a won or drawn position.
-Games are drawn in a past "season" year (2016, then 2015, …), so your recent activity keeps its look. Finished games stay on the graph as a trophy wall.
+Games are drawn in a past year with no other activity on your graph (picked for you), so your recent activity keeps its look and can't change the board's colors. Finished games stay on the graph as a trophy wall, or erase them all with Start over in Settings.
 Squares show as "pending" until GitHub's graph catches up, and the game keeps going even when GitHub is slow.
 
 How to use it:
 1. Click the extension icon and choose "Sign in with GitHub", then enter the code GitHub shows you. You never need to give it access to any organization.
 2. Click "Set up my board": a board repository is created in your account (or an existing one is reused).
-3. Open the link to your board on your profile and click "New game".
+3. Open your profile and click "New game" in the Commit Four panel under your graph.
 
 Privacy: everything stays in your browser. The extension only works on your own profile, only talks to GitHub and (if you choose) a helper running on your own computer, collects no analytics, and never writes to any repo except your board repo.
 
@@ -119,3 +119,4 @@ Screenshots must not show GitHub's logo prominently or imply endorsement.
 | 0.1.0 | 2026-10-08 | First release: board overlay, local-helper and browser-only modes, Casual/Hard/Perfect AI. |
 | 0.1.1 | 2026-10-09 | Fresh GitHub reads (no "board changed elsewhere" after quick moves), working Resign and Settings, difficulty changeable mid-game, faster turns with a timing breakdown. |
 | 0.1.2 | 2026-10-09 | Your pieces and the AI's now render in two different shades (corrected shading model; the Jan 1 anchor becomes 14 commits, older boards are topped up on the next move). |
+| 0.2.0 | 2026-10-09 | Start over (erase all games, in Settings). Each board's year is picked from your own graph (the newest empty past year), and the panel warns if GitHub shades the board unexpectedly. |

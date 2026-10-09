@@ -12,11 +12,13 @@ export interface WriteInfo {
 
 export type Request =
   | { type: "c4:getState" }
-  | { type: "c4:newGame"; difficulty: Difficulty; humanFirst: boolean }
+  | { type: "c4:newGame"; difficulty: Difficulty; humanFirst: boolean; season?: number }
   | { type: "c4:move"; gameId: number; ply: number; col: number }
   | { type: "c4:resign"; gameId: number }
   | { type: "c4:setDifficulty"; gameId: number; difficulty: Difficulty }
-  | { type: "c4:openOptions" };
+  | { type: "c4:openOptions" }
+  /** Erase every game. Accepted only from the extension's own pages (Settings), never a tab. */
+  | { type: "c4:startOver" };
 
 export type Response =
   | {
@@ -38,7 +40,6 @@ export interface WriteUpdate {
   state?: BoardState | null;
 }
 
-/** Service worker -> offscreen document. */
 /** Service worker -> offscreen document: load the AI before the first move needs it. */
 export interface AiWarmup {
   type: "c4:ai-warm";
@@ -61,6 +62,7 @@ export function isRequest(x: unknown): x is Request {
     t === "c4:move" ||
     t === "c4:resign" ||
     t === "c4:setDifficulty" ||
-    t === "c4:openOptions"
+    t === "c4:openOptions" ||
+    t === "c4:startOver"
   );
 }

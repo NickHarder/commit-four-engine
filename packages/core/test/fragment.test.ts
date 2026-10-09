@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseContributionCalendar, parseTooltipCount } from "../src/fragment";
+import { isEmptyCalendar, parseContributionCalendar, parseTooltipCount } from "../src/fragment";
 import { calendarHtml } from "./fixtures";
 
 describe("contribution calendar parser", () => {
@@ -23,6 +23,14 @@ describe("contribution calendar parser", () => {
     expect(byDate.get("2016-01-15")).toMatchObject({ count: 2, level: 2 });
     expect(byDate.get("2016-01-02")).toMatchObject({ count: 0, level: 0 });
     expect(cal.privateProfile).toBe(false);
+  });
+
+  it("tells an empty year from one with any contribution", () => {
+    expect(isEmptyCalendar(calendarHtml("NickHarder", "2016-01-01", "2016-12-31", new Map()))).toBe(true);
+    expect(
+      isEmptyCalendar(calendarHtml("NickHarder", "2016-01-01", "2016-12-31", new Map([["2016-07-04", 1]]))),
+    ).toBe(false);
+    expect(isEmptyCalendar("<html><body>Not Found</body></html>")).toBe(false);
   });
 
   it("parses tooltip variants", () => {

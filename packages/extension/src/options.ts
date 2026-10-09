@@ -10,12 +10,11 @@ import {
   GameEngine,
   GitHubClient,
   type Identity,
-  seasonProfileUrl,
   UnclaimedBoardError,
 } from "@commit-four/core";
 import { GITHUB_CLIENT_ID, OAUTH_SCOPE } from "./config";
 import { DeviceFlowError, pollForToken, requestDeviceCode } from "./deviceFlow";
-import type { Mode } from "./messages";
+import type { Mode, Request, Response } from "./messages";
 import { DEFAULT_SETTINGS, loadSettings, type Settings, saveSettings } from "./settings";
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
@@ -60,8 +59,10 @@ function showAccount(view: "signed-out" | "device" | "signed-in"): void {
 }
 
 function showPlay(s: Settings): void {
-  account.playLink.href = seasonProfileUrl(s.owner, 2016);
+  // the board's year is picked from your graph when you start a game there
+  account.playLink.href = `https://github.com/${encodeURIComponent(s.owner)}`;
   account.play.hidden = !s.repo;
+  showStartOver(s);
 }
 
 $("#signin").addEventListener("click", async () => {
@@ -125,6 +126,7 @@ $("#signout").addEventListener("click", async () => {
   await chrome.storage.local.remove("settings");
   showAccount("signed-out");
   account.play.hidden = true;
+  showStartOver(null);
   accountSay("Signed out. To fully revoke access, remove Commit Four at github.com/settings/applications.");
 });
 
@@ -160,6 +162,71 @@ account.setup.addEventListener("click", async () => {
   } finally {
     account.setup.disabled = false;
   }
+});
+
+// --- Start over -----------------------------------------------------------------------------------
+
+const wipe = {
+  section: $("#start-over"),
+  repo: $("#start-over-repo"),
+  open: $<HTMLButtonElement>("#start-over-open"),
+  confirm: $("#start-over-confirm"),
+  name: $<HTMLInputElement>("#start-over-name"),
+  go: $<HTMLButtonElement>("#start-over-go"),
+  cancel: $<HTMLButtonElement>("#start-over-cancel"),
+  status: $("#start-over-status"),
+};
+
+function showStartOver(s: Settings | null): void {
+  wipe.section.hidden = !s?.repo;
+  if (s?.repo) wipe.repo.textContent = `${s.owner}/${s.repo}`;
+}
+
+function wipeSay(text: string, bad = false): void {
+  wipe.status.textContent = text;
+  wipe.status.classList.toggle("bad", bad);
+}
+
+function closeWipe(): void {
+  wipe.confirm.hidden = true;
+  wipe.open.hidden = false;
+  wipe.name.value = "";
+  wipe.go.disabled = true;
+}
+
+wipe.open.addEventListener("click", () => {
+  wipe.open.hidden = true;
+  wipe.confirm.hidden = false;
+  wipeSay("");
+  wipe.name.focus();
+});
+wipe.cancel.addEventListener("click", () => {
+  closeWipe();
+  wipe.open.focus();
+});
+wipe.name.addEventListener("input", async () => {
+  const s = await loadSettings();
+  wipe.go.disabled = !s?.repo || wipe.name.value.trim() !== s.repo;
+});
+wipe.go.addEventListener("click", async () => {
+  const s = await loadSettings();
+  if (!s?.repo || wipe.name.value.trim() !== s.repo) return;
+  wipe.go.disabled = true;
+  wipeSay(`Erasing every game from ${s.owner}/${s.repo}…`);
+  const req: Request = { type: "c4:startOver" };
+  const r = (await chrome.runtime.sendMessage(req).catch((e: unknown) => ({
+    ok: false,
+    error: e instanceof Error ? e.message : String(e),
+  }))) as Response;
+  if (!r.ok) {
+    wipe.go.disabled = false;
+    wipeSay(`Nothing was erased: ${r.error}`, true);
+    return;
+  }
+  closeWipe();
+  wipeSay(
+    "Done: your board is empty. GitHub can take up to a day to remove the old squares; new games meanwhile go in another empty year.",
+  );
 });
 
 // --- Advanced form ------------------------------------------------------------------------------
@@ -221,6 +288,7 @@ form.addEventListener("submit", (ev) => {
         await testApi(s);
       }
       await saveSettings(s);
+      showStartOver(s);
     } catch (e) {
       say(e instanceof Error ? e.message : String(e), true);
     }
@@ -325,6 +393,7 @@ async function init(): Promise<void> {
   form.querySelector<HTMLInputElement>(`input[name="mode"][value="${adv.mode}"]`)!.checked = true;
   if (s && s.authKind !== "oauth") $<HTMLDetailsElement>("#advanced").open = true;
   showMode();
+  showStartOver(s);
 }
 
 void init();

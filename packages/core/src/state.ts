@@ -28,8 +28,14 @@ export const ENGINE_AUTHOR = { name: "Commit Four", email: "engine@commit-four.i
  * took every human square out of the scale with it) and stay under 15, so GitHub drops only it.
  */
 export const SEASON_COUNTS = { human: 4, ai: 2, anchor: 14 } as const;
-/** Account created 2017-07-08, so 2016 and earlier are guaranteed-empty canvases for the default owner. */
+/**
+ * Fallback season when no graph check is available (tests, offline CLI): the default owner's
+ * account dates from 2017, so 2016 is empty for them. Everywhere else the year comes from
+ * `findEmptySeason`, which checks the owner's real graph.
+ */
 export const DEFAULT_SEASON = 2016;
+/** Oldest year `findEmptySeason` looks at (git itself dates from 2005). */
+export const OLDEST_SEASON = 2005;
 
 export type Player = "human" | "ai";
 export type GameStatus = "in_progress" | "human_won" | "ai_won" | "draw" | "resigned";
@@ -67,7 +73,12 @@ export interface NewGameOptions {
   difficulty: Difficulty;
   humanFirst: boolean;
   now?: Date;
-  /** Season mode: the newest season to use (default 2016). Seasons fill backwards when full. */
+  /**
+   * Season mode: the year to open when the board's years are full, from `findEmptySeason` (a
+   * past year whose graph is empty). Without it, seasons fill backwards from `startSeason`.
+   */
+  season?: number;
+  /** Season mode fallback when no `season` is given: the newest season to use (default 2016). */
   startSeason?: number;
   /** Rolling (last-12-months) mode: an explicit placement + counts from calibrate.ts. */
   rolling?: { anchorSunday: IsoDate; counts: { human: number; ai: number } };
@@ -92,19 +103,90 @@ export function playerOfPly(game: GameRecord, ply: number): Player {
   return (ply % 2 === 0) === game.humanFirst ? "human" : "ai";
 }
 
-export function nextPlacement(state: BoardState, startSeason = DEFAULT_SEASON): Placement {
+/** Years this board draws in, in the order it started using them. */
+export function boardSeasons(state: BoardState): number[] {
+  const out: number[] = [];
+  const add = (y: number | undefined) => {
+    if (y !== undefined && !out.includes(y)) out.push(y);
+  };
+  for (const a of state.anchors) add(Number(a.date.slice(0, 4)));
+  for (const g of state.games) if (g.placement.mode === "season") add(g.placement.season);
+  return out;
+}
+
+function freeSlot(state: BoardState): Placement | null {
   const used = new Set(
     state.games
       .filter((g) => g.placement.mode === "season")
       .map((g) => `${g.placement.season}:${g.placement.slot}`),
   );
-  for (let season = startSeason; season >= 1980; season--) {
+  for (const season of boardSeasons(state)) {
     for (let slot = 0; slot < SLOTS_PER_SEASON; slot++) {
       if (!used.has(`${season}:${slot}`))
         return { mode: "season", season, slot, anchorSunday: slotAnchorSunday(season, slot) };
     }
   }
+  return null;
+}
+
+/** True when the next game needs a year the board doesn't use yet (pass one from findEmptySeason). */
+export function needsNewSeason(state: BoardState): boolean {
+  return freeSlot(state) === null;
+}
+
+/**
+ * Where the next game goes: a free slot in a year the board already uses, else slot 0 of
+ * `opts.season`, else (no graph check available) the newest unused year from `startSeason` down.
+ */
+export function nextPlacement(
+  state: BoardState,
+  opts: { season?: number; startSeason?: number; now?: Date } = {},
+): Placement {
+  const free = freeSlot(state);
+  if (free) return free;
+  const used = new Set(boardSeasons(state));
+  const slot0 = (season: number): Placement => ({
+    mode: "season",
+    season,
+    slot: 0,
+    anchorSunday: slotAnchorSunday(season, 0),
+  });
+  if (opts.season !== undefined) {
+    const latest = latestSeason(opts.now ?? new Date());
+    if (!Number.isInteger(opts.season) || opts.season < OLDEST_SEASON || opts.season > latest)
+      throw new Error(`season must be a year from ${OLDEST_SEASON} to ${latest}`);
+    if (used.has(opts.season)) throw new Error(`season ${opts.season} is already used by this board`);
+    return slot0(opts.season);
+  }
+  for (let season = opts.startSeason ?? DEFAULT_SEASON; season >= 1980; season--) {
+    if (!used.has(season)) return slot0(season);
+  }
   throw new Error("no free board slots left");
+}
+
+/**
+ * Newest year a board may use: two years back, so it never overlaps the default
+ * "last 12 months" view, where the owner's real activity would set the shades.
+ */
+export function latestSeason(now: Date): number {
+  return now.getUTCFullYear() - 2;
+}
+
+/**
+ * The newest past year whose graph shows no contributions at all, so a board there is shaded only
+ * by its own squares. `isEmpty` checks one year's calendar (see `isEmptyCalendar`); years the
+ * board already uses are skipped. A year still showing a wiped board's squares isn't empty yet.
+ */
+export async function findEmptySeason(opts: {
+  isEmpty: (year: number) => Promise<boolean>;
+  now?: Date;
+  exclude?: Iterable<number>;
+}): Promise<number | null> {
+  const skip = new Set(opts.exclude ?? []);
+  for (let year = latestSeason(opts.now ?? new Date()); year >= OLDEST_SEASON; year--) {
+    if (!skip.has(year) && (await opts.isEmpty(year))) return year;
+  }
+  return null;
 }
 
 export function startGame(state: BoardState, opts: NewGameOptions): BoardState {
@@ -120,7 +202,11 @@ export function startGame(state: BoardState, opts: NewGameOptions): BoardState {
     placement = { mode: "rolling", anchorSunday: opts.rolling.anchorSunday };
     counts = { ...opts.rolling.counts };
   } else {
-    placement = nextPlacement(state, opts.startSeason);
+    placement = nextPlacement(state, {
+      ...(opts.season !== undefined ? { season: opts.season } : {}),
+      ...(opts.startSeason !== undefined ? { startSeason: opts.startSeason } : {}),
+      now: new Date(now),
+    });
     counts = { human: SEASON_COUNTS.human, ai: SEASON_COUNTS.ai };
     const anchorDate = seasonAnchorDate(placement.season!);
     if (!anchors.some((a) => a.date === anchorDate))

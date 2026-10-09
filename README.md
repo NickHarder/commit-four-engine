@@ -20,10 +20,16 @@ a vanity metric anyway; this makes the point with style.
 
 ## How it works
 
-- **Season years.** Boards are drawn in a past year that has no other activity (2016 by default,
-  then 2015, …), six boards per year. Your real recent graph keeps its look, and the shading scale
-  is fully predictable: GitHub scales each displayed range on its own, so 2 and 4 commits give two
-  clearly different greens. (A last-12-months fallback is implemented in `core/calibrate.ts`.)
+- **Season years.** Boards are drawn in the newest past year (at least two years back) whose graph
+  shows no contributions at all, six boards per year; when a year is full, the next empty one is
+  picked the same way. GitHub shades each displayed range on its own, so in a year that holds
+  nothing but the game the colors depend only on the game: your squares (4 commits) and the AI's
+  (2) come out as two different greens for everyone, thanks to a 14-commit "scale anchor" on Jan 1
+  (see `docs/research.md`). If real activity later lands in that year and changes the shades, the
+  panel says so. (A last-12-months fallback is implemented in `core/calibrate.ts`.)
+- **Start over.** Settings → **Erase all games…** replaces the board repo's history with one fresh
+  commit (or `commit-four start-over`). GitHub can take up to a day to drop the old squares; until
+  then, new games go in another empty year.
 - **Near real time.** The extension paints moves instantly with a "pending" outline, writes them
   in the background, and polls your graph until GitHub shows them. If GitHub's graph is slow (it
   sometimes lags by hours), the game just keeps going.
@@ -42,7 +48,8 @@ a vanity metric anyway; this makes the point with style.
 2. Click the extension's icon → **Sign in with GitHub** → enter the code GitHub shows you. GitHub
    lists your organizations too; you don't need to grant any of them.
 3. **Set up my board**: creates a `commit-four-board` repo for you (or reuses/claims one).
-4. **Open your board and play**: click a column on your 2016 graph, then **New game**.
+4. **Open your board and play**: on your profile, click **New game** in the Commit Four panel. It
+   finds an empty year on your graph and opens it; then click a column to move.
 
 Signing in grants access to your public repositories (GitHub's narrowest OAuth option for this);
 Commit Four only ever writes to your board repo. Revoke any time at github.com/settings/applications.
@@ -64,8 +71,8 @@ You need Node 22+, git, and Chrome.
    ```
 3. **Load the extension**: `chrome://extensions` → Developer mode → **Load unpacked** →
    `packages/extension/build`. In its settings choose *Local helper* and paste the pairing token.
-4. **Play**: open `https://github.com/<you>?tab=overview&from=2016-12-01&to=2016-12-31` and click
-   **New game**. No browser? `npm run play` plays in the terminal.
+4. **Play**: open your profile (`https://github.com/<you>`) and click **New game** in the Commit Four
+   panel. No browser? `npm run play` plays in the terminal.
 
 `npm run doctor` checks the things that can hide your board, such as a private profile.
 

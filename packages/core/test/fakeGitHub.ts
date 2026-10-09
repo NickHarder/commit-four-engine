@@ -177,10 +177,11 @@ export class FakeGitHub {
     }
     if (method === "PATCH" && path === `${base}/git/refs/heads/main`) {
       const head = this.refs.get("main")!;
-      // fast-forward only
+      if (!this.commits.has(body.sha)) return json(422, { message: "Object does not exist" });
+      // fast-forward only, unless forced
       let sha: string | undefined = body.sha;
-      while (sha && sha !== head) sha = this.commits.get(sha)?.parents[0];
-      if (sha !== head) return json(422, { message: "Update is not a fast forward" });
+      while (!body.force && sha && sha !== head) sha = this.commits.get(sha)?.parents[0];
+      if (!body.force && sha !== head) return json(422, { message: "Update is not a fast forward" });
       this.refs.set("main", body.sha);
       return json(200, { object: { sha: body.sha } });
     }

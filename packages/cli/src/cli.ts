@@ -4,6 +4,7 @@
  *   commit-four init <owner>/<repo>   set up (or create) a board repo and clone it locally
  *   commit-four serve                 run the local helper the browser extension talks to
  *   commit-four play                  play in the terminal instead
+ *   commit-four start-over            erase every game from the board
  *   commit-four status | doctor | pair
  */
 
@@ -13,11 +14,15 @@ import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import {
   boardFiles,
+  boardSeasons,
+  contributionsFragmentPath,
   currentGame,
-  DEFAULT_SEASON,
   DIFFICULTIES,
   type Difficulty,
+  findEmptySeason,
   GameEngine,
+  isEmptyCalendar,
+  needsNewSeason,
   playerToMove,
   randomBoardId,
   seasonProfileUrl,
@@ -169,7 +174,7 @@ ${info?.private ? "\nThis repo is private: turn on Settings > Public profile > '
 Next:
   1. Load the extension: chrome://extensions > Developer mode > Load unpacked > packages/extension/build
   2. Start the helper and paste its pairing token into the extension:  npm run serve
-  3. Open ${seasonProfileUrl(owner, DEFAULT_SEASON)} and click "New game"
+  3. Open https://github.com/${owner} and click "New game" in the Commit Four panel
      (or play in the terminal:  npm run play)
 Check visibility settings any time with:  npm run doctor`);
 }
@@ -246,7 +251,8 @@ async function play(args: Args): Promise<void> {
       const humanFirst = !args.flags.has("ai-first");
       if (difficulty === "perfect" && !humanFirst)
         console.log("Heads up: Perfect moving first can't be beaten (Connect 4 is solved).");
-      const t = await engine.newGame({ difficulty, humanFirst });
+      const season = await seasonFor(engine.current(), board.owner, args);
+      const t = await engine.newGame({ difficulty, humanFirst, ...(season ? { season } : {}) });
       if (t.aiCol !== null) console.log(`AI opens in column ${t.aiCol + 1}`);
       game = currentGame(t.state)!;
     }
@@ -282,6 +288,59 @@ async function play(args: Args): Promise<void> {
   } finally {
     rl.close();
   }
+}
+
+/**
+ * The year for a new game when the board's years are full: --season, or the newest past year
+ * whose public graph is empty (so the board is shaded only by its own squares).
+ */
+async function seasonFor(
+  state: Parameters<typeof needsNewSeason>[0],
+  owner: string,
+  args: Args,
+): Promise<number | undefined> {
+  if (!needsNewSeason(state)) return undefined;
+  const forced = flag(args, "season");
+  if (forced !== undefined) return Number(forced);
+  console.log("Looking for a past year with no contributions on your graph ...");
+  const season = await findEmptySeason({
+    exclude: boardSeasons(state),
+    isEmpty: async (year) => {
+      const path = contributionsFragmentPath(owner, `${year}-01-01`, `${year}-12-31`);
+      const res = await fetch(`https://github.com${path}`, { headers: { Accept: "text/html" } });
+      if (!res.ok)
+        throw new Error(`couldn't read your ${year} graph (HTTP ${res.status}); pass --season <year>`);
+      return isEmptyCalendar(await res.text());
+    },
+  });
+  if (season === null)
+    throw new Error("every year on your graph has contributions; pass --season <year> to pick one anyway");
+  console.log(`Your board goes in ${season}.`);
+  return season;
+}
+
+async function startOver(args: Args): Promise<void> {
+  const config = await loadConfig();
+  const board = currentBoard(config, flag(args, "board"));
+  const writer = new GitWriter({ dir: board.dir, branch: board.branch });
+  const engine = engineFor(board, writer);
+  await engine.load(true);
+  const games = engine.current().games.length;
+  if (!args.flags.has("yes")) {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    const answer = await rl.question(
+      `This erases all ${games} game${games === 1 ? "" : "s"} from ${board.owner}/${board.repo} and your graph.\nType the repo name (${board.repo}) to confirm: `,
+    );
+    rl.close();
+    if (answer.trim() !== board.repo) {
+      console.log("Nothing erased.");
+      return;
+    }
+  }
+  await engine.startOver();
+  console.log(
+    "Done: the board is empty. GitHub can take up to a day to remove the old squares from your graph.",
+  );
 }
 
 async function status(args: Args): Promise<void> {
@@ -337,7 +396,9 @@ const HELP = `commit-four ${VERSION} — Connect 4 on your GitHub contribution g
   setup [--board <owner>/<repo>]                           make this repo (your "Use this template" copy) your board
   init <owner>/<repo> [--create] [--private] [--email e]   set up a separate, empty board repo
   serve [--port ${47474}]                                   local helper for the browser extension
-  play [--difficulty casual|hard|perfect] [--ai-first]      play in the terminal
+  play [--difficulty casual|hard|perfect] [--ai-first] [--season <year>]
+                                                            play in the terminal
+  start-over [--yes]                                        erase every game (asks first)
   status                                                    show the current game
   doctor                                                    check visibility and settings
   pair [--reset]                                            show (or rotate) the extension pairing token
@@ -350,6 +411,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     init,
     serve,
     play,
+    "start-over": startOver,
     status,
     doctor,
     pair,

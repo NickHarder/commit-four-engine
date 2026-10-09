@@ -5,8 +5,12 @@ import { computeLevels } from "../src/levels";
 import { gamePieces, planWrite, targetCounts } from "../src/renderPlan";
 import {
   applyMove,
+  boardSeasons,
   currentGame,
+  findEmptySeason,
   initialState,
+  needsNewSeason,
+  nextPlacement,
   parseState,
   playerToMove,
   resign,
@@ -146,6 +150,47 @@ describe("board state", () => {
     s = resign(s, now);
     expect(s.games[0]!.status).toBe("resigned");
     expect(renderBoardSvg(s.games[0]!)).toContain("resigned");
+  });
+});
+
+describe("board years", () => {
+  const playOut = (s: ReturnType<typeof initialState>) => {
+    for (const col of [0, 1, 0, 1, 0, 1])
+      s = applyMove(s, s.games.at(-1)!.moves.length % 2 ? "ai" : "human", col, now);
+    return applyMove(s, "human", 0, now);
+  };
+
+  it("fills the board's years before asking for a new one", () => {
+    let s = initialState("NickHarder", now);
+    expect(needsNewSeason(s)).toBe(true);
+    s = playOut(startGame(s, { difficulty: "casual", humanFirst: true, now, season: 2021 }));
+    expect(s.games[0]!.placement).toMatchObject({ season: 2021, slot: 0 });
+    expect(boardSeasons(s)).toEqual([2021]);
+    expect(needsNewSeason(s)).toBe(false);
+    // a season passed while the board's year still has room is ignored
+    s = playOut(startGame(s, { difficulty: "casual", humanFirst: true, now, season: 2012 }));
+    expect(s.games[1]!.placement).toMatchObject({ season: 2021, slot: 1 });
+    for (let i = 2; i < 6; i++) s = playOut(startGame(s, { difficulty: "casual", humanFirst: true, now }));
+    expect(needsNewSeason(s)).toBe(true);
+    expect(() => nextPlacement(s, { season: 2021, now })).toThrow(/already used/);
+    expect(() => nextPlacement(s, { season: 2025, now })).toThrow(/from 2005 to 2024/);
+    expect(nextPlacement(s, { season: 2012, now })).toMatchObject({ season: 2012, slot: 0 });
+  });
+
+  it("finds the newest past year with an empty graph, at least two years back", async () => {
+    const asked: number[] = [];
+    const nonEmpty = new Set([2024, 2023, 2022, 2019, 2018, 2017]);
+    const year = await findEmptySeason({
+      now,
+      exclude: [2021],
+      isEmpty: async (y) => {
+        asked.push(y);
+        return !nonEmpty.has(y);
+      },
+    });
+    expect(year).toBe(2020);
+    expect(asked).toEqual([2024, 2023, 2022, 2020]);
+    expect(await findEmptySeason({ now, isEmpty: async () => false })).toBeNull();
   });
 });
 

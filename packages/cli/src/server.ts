@@ -14,6 +14,7 @@ import {
   DIFFICULTIES,
   type Difficulty,
   type GameEngine,
+  needsNewSeason,
   StaleMoveError,
   WIDTH,
 } from "@commit-four/core";
@@ -150,9 +151,14 @@ export function createHelperServer(opts: HelperOptions & { status: WriteStatus }
         const difficulty = body.difficulty;
         if (!DIFFICULTIES.includes(difficulty as Difficulty)) throw new HttpError(400, "difficulty");
         if (typeof body.humanFirst !== "boolean") throw new HttpError(400, "humanFirst");
+        const season = body.season === undefined ? undefined : intField(body, "season", 1980, 9999);
+        // a new year must come from a check of the owner's graph (the extension does it), never a guess
+        if (season === undefined && needsNewSeason(opts.engine.current()))
+          throw new HttpError(422, "a new board year is needed: reload the page to pick one");
         const turn = await opts.engine.newGame({
           difficulty: difficulty as Difficulty,
           humanFirst: body.humanFirst,
+          ...(season !== undefined ? { season } : {}),
         });
         track(opts, turn.written, log);
         log(
@@ -182,6 +188,12 @@ export function createHelperServer(opts: HelperOptions & { status: WriteStatus }
         log(`difficulty set to ${difficulty}`);
         return send(res, 200, { state: turn.state, aiCol: null }, origin);
       }
+      if (url.pathname === "/v1/start-over") {
+        if (body.confirm !== true) throw new HttpError(400, "confirm");
+        const state = await opts.engine.startOver();
+        log("started over: all games erased");
+        return send(res, 200, { state, aiCol: null }, origin);
+      }
       if (url.pathname === "/v1/resign") {
         const turn = await opts.engine.resign(intField(body, "gameId", 1, 1_000_000));
         track(opts, turn.written, log);
@@ -193,7 +205,7 @@ export function createHelperServer(opts: HelperOptions & { status: WriteStatus }
       if (e instanceof StaleMoveError) return send(res, 409, { error: e.message, state: e.state }, origin);
       const message = e instanceof Error ? e.message : String(e);
       // rule violations (illegal move, wrong turn) are client errors
-      if (/illegal|full|not the|no game|already in progress|ended/i.test(message))
+      if (/illegal|full|not the|no game|already in progress|ended|season/i.test(message))
         return send(res, 422, { error: message }, origin);
       log(`error: ${message}`);
       return send(res, 500, { error: "internal error" }, origin);

@@ -121,8 +121,14 @@ describe("local helper security", () => {
 
 describe("local helper gameplay", () => {
   it("starts a game, plays a move, answers with the AI move and reports stale clicks", async () => {
-    const g = await post("/v1/new-game", { difficulty: "hard", humanFirst: true });
+    // a brand-new board needs a year, picked by the extension from the owner's graph
+    const noYear = await post("/v1/new-game", { difficulty: "hard", humanFirst: true });
+    expect(noYear.status).toBe(422);
+    const g = await post("/v1/new-game", { difficulty: "hard", humanFirst: true, season: 2016 });
     expect(g.status).toBe(200);
+    expect((g.json.state as { games: { placement: { season: number } }[] }).games[0]!.placement.season).toBe(
+      2016,
+    );
     const m = await post("/v1/move", { gameId: 1, ply: 0, col: 2 });
     expect(m.status).toBe(200);
     expect(m.json.aiCol).toBe(3);
@@ -131,5 +137,12 @@ describe("local helper gameplay", () => {
     expect((stale.json.state as { games: { moves: string }[] }).games[0]!.moves).toBe("34");
     const s = await call("GET", "/v1/status", { headers: auth });
     expect((s.json.state as { games: unknown[] }).games).toHaveLength(1);
+  });
+
+  it("starts over only when asked to explicitly", async () => {
+    expect((await post("/v1/start-over", {})).status).toBe(400);
+    const r = await post("/v1/start-over", { confirm: true });
+    expect(r.status).toBe(200);
+    expect((r.json.state as { games: unknown[] }).games).toHaveLength(0);
   });
 });

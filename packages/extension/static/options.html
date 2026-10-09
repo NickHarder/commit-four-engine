@@ -110,13 +110,34 @@
       </form>
       </details>
 
+      <section id="start-over" aria-labelledby="start-over-title" hidden>
+        <h2 id="start-over-title">Start over</h2>
+        <p>Erase every game from <strong id="start-over-repo"></strong> and from your graph, and start with an empty board.</p>
+        <button type="button" id="start-over-open" class="danger-outline">Erase all games…</button>
+        <div id="start-over-confirm" hidden>
+          <p class="hint">
+            This replaces the board repo's history with one fresh commit. It can't be undone. GitHub can take up to
+            a day to remove the old squares from your graph; until then, new games go in another empty year.
+          </p>
+          <div class="field">
+            <label for="start-over-name">Type the board repo name to confirm</label>
+            <input id="start-over-name" autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="actions">
+            <button type="button" id="start-over-go" class="danger" disabled>Erase everything</button>
+            <button type="button" id="start-over-cancel" class="secondary">Cancel</button>
+          </div>
+        </div>
+        <p id="start-over-status" role="status" aria-live="polite"></p>
+      </section>
+
       <section class="notes">
         <h2>Good to know</h2>
         <ul>
           <li>Signing in grants Commit Four access to your public repositories (GitHub has no narrower option for this); it only ever writes to the board repo you set up here. You can revoke it any time at github.com/settings/applications.</li>
-          <li>Boards are drawn in past "season" years (2016, then 2015, …), so your real recent activity keeps its look. Open that year on your profile to play.</li>
+          <li>Boards are drawn in the newest past year (at least two years back) with no contributions on your graph, six boards per year, so your real activity keeps its look and can't change the board's colors. Start a game from your profile; Commit Four opens that year for you.</li>
           <li>If your profile activity is private, only you can see the board.</li>
-          <li>Commit Four only writes to repos containing its <code>.commit-four-board</code> file, never force-pushes, and keeps volumes tiny (about 130 commits per game).</li>
+          <li>Commit Four only writes to repos containing its <code>.commit-four-board</code> file, never force-pushes (except when you choose Start over), and keeps volumes tiny (about 130 commits per game).</li>
           <li>Unofficial project; GitHub's abuse detection could still flag unusual activity. Use at your own risk.</li>
         </ul>
       </section>
