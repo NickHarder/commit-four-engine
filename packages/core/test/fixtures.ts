@@ -30,7 +30,8 @@ export function calendarHtml(login: string, from: string, to: string, counts: Ma
     }
     rows.push(`<tr style="height: 10px">${cells.join("")}</tr>`);
   }
-  const total = [...counts.values()].reduce((a, b) => a + b, 0);
+  // like GitHub's heading: contributions in the displayed range only
+  const total = days.reduce((sum, d) => sum + d.count, 0);
   return `<div class="js-calendar-graph ContributionCalendar" data-graph-url="/users/${login}/contributions" data-url="/${login}" data-from="${from} 00:00:00 UTC" data-to="${to} 23:59:59 UTC">
 <h2 id="js-contribution-activity-description" class="f4 text-normal mb-2">${total} contributions in ${from.slice(0, 4)}</h2>
 <table role="grid" class="ContributionCalendar-grid js-calendar-graph-table"><tbody>${rows.join("\n")}</tbody></table>
