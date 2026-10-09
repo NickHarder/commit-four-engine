@@ -133,7 +133,19 @@ describe("GitWriter", () => {
 
     // someone else pushes after our last read: the reset must not clobber it
     const head = sh(remote, "rev-parse", "main");
-    const other = sh(remote, "commit-tree", `${head}^{tree}`, "-p", head, "-m", "external");
+    const other = sh(
+      remote,
+      "-c",
+      "user.name=x",
+      "-c",
+      "user.email=x@example.com",
+      "commit-tree",
+      `${head}^{tree}`,
+      "-p",
+      head,
+      "-m",
+      "external",
+    );
     sh(remote, "update-ref", "refs/heads/main", other);
     await expect(
       writer.reset({ files: [], message: "c4: start over", expectedHead: (await writer.readState()).head }),
