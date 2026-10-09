@@ -23,6 +23,7 @@ import {
   resign,
   STATE_PATH,
   SVG_PATH,
+  setDifficulty,
   startGame,
 } from "./state";
 import { renderBoardSvg } from "./svg";
@@ -165,6 +166,13 @@ export class GameEngine {
     return { state: next, aiCol, written: this.enqueueSync() };
   }
 
+  async setDifficulty(gameId: number, difficulty: Difficulty): Promise<TurnResult> {
+    const game = currentGame(this.current());
+    if (!game || game.id !== gameId) throw new StaleMoveError(this.current());
+    this.state = setDifficulty(this.current(), difficulty, this.now());
+    return { state: this.state, aiCol: null, written: this.enqueueSync() };
+  }
+
   async resign(gameId: number): Promise<TurnResult> {
     const game = currentGame(this.current());
     if (!game || game.id !== gameId) throw new StaleMoveError(this.current());
@@ -280,7 +288,8 @@ export function isPrefix(remote: BoardState, desired: BoardState): boolean {
     const same =
       r.id === d.id &&
       r.humanFirst === d.humanFirst &&
-      r.difficulty === d.difficulty &&
+      // difficulty may change while a game is in progress
+      (r.difficulty === d.difficulty || r.status === "in_progress") &&
       JSON.stringify(r.placement) === JSON.stringify(d.placement) &&
       JSON.stringify(r.counts) === JSON.stringify(d.counts) &&
       d.moves.startsWith(r.moves);

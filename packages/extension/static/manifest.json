@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Commit Four — Connect 4 on your contribution graph",
   "short_name": "Commit Four",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Play Connect 4 against an AI by clicking your own GitHub contribution graph. Unofficial; not affiliated with GitHub.",
   "minimum_chrome_version": "123",
   "icons": {

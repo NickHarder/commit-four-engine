@@ -78,7 +78,35 @@ export class FakeGitHub {
     return this.trees.get(this.commits.get(this.refs.get("main")!)!.tree)!.get(path);
   }
 
+  /**
+   * Imitates a browser HTTP cache in front of GitHub, whose REST responses say
+   * `Cache-Control: private, max-age=60`: a GET that doesn't opt out (cache: "no-store", or the
+   * Pragma/Cache-Control: no-cache headers browsers send for it) gets the response from up to 60 s ago.
+   */
+  simulateHttpCache = false;
+  now: () => number = () => Date.now();
+  private readonly httpCache = new Map<string, { at: number; status: number; body: string }>();
+
   readonly fetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const method = init?.method ?? "GET";
+    if (method !== "GET" || !this.simulateHttpCache) return this.handle(input, init);
+    const key = String(input);
+    const headers = new Headers(init?.headers);
+    const noStore =
+      (init as { cache?: string } | undefined)?.cache === "no-store" ||
+      /no-cache/i.test(headers.get("pragma") ?? "") ||
+      /no-cache|max-age=0/i.test(headers.get("cache-control") ?? "");
+    const hit = this.httpCache.get(key);
+    if (!noStore && hit && this.now() - hit.at < 60_000) {
+      return new Response(hit.body, { status: hit.status, headers: { "Content-Type": "application/json" } });
+    }
+    const res = await this.handle(input, init);
+    const body = await res.text();
+    this.httpCache.set(key, { at: this.now(), status: res.status, body });
+    return new Response(body, { status: res.status, headers: { "Content-Type": "application/json" } });
+  };
+
+  private readonly handle = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const url = new URL(String(input));
     const method = init?.method ?? "GET";
     const path = url.pathname;

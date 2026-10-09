@@ -15,6 +15,7 @@ export type Request =
   | { type: "c4:newGame"; difficulty: Difficulty; humanFirst: boolean }
   | { type: "c4:move"; gameId: number; ply: number; col: number }
   | { type: "c4:resign"; gameId: number }
+  | { type: "c4:setDifficulty"; gameId: number; difficulty: Difficulty }
   | { type: "c4:openOptions" };
 
 export type Response =
@@ -38,6 +39,12 @@ export interface WriteUpdate {
 }
 
 /** Service worker -> offscreen document. */
+/** Service worker -> offscreen document: load the AI before the first move needs it. */
+export interface AiWarmup {
+  type: "c4:ai-warm";
+  target: "offscreen";
+}
+
 export interface AiRequest {
   type: "c4:ai";
   target: "offscreen";
@@ -53,6 +60,7 @@ export function isRequest(x: unknown): x is Request {
     t === "c4:newGame" ||
     t === "c4:move" ||
     t === "c4:resign" ||
+    t === "c4:setDifficulty" ||
     t === "c4:openOptions"
   );
 }

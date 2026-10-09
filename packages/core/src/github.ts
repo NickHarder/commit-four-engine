@@ -6,7 +6,7 @@
 import { GameEngine } from "./engine";
 import { DEFAULT_SEASON } from "./state";
 import { boardFiles, randomBoardId, UNCLAIMED_OWNER } from "./template";
-import { ApiWriter, GitHubApiError, type Identity } from "./writer";
+import { ApiWriter, GitHubApiError, type Identity, NO_STORE } from "./writer";
 
 export const DEFAULT_BOARD_REPO = "commit-four-board";
 
@@ -37,6 +37,7 @@ export class GitHubClient {
   async request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const res = await this.fetchImpl(`${this.apiBase}${path}`, {
       method,
+      ...NO_STORE,
       headers: {
         Accept: "application/vnd.github+json",
         Authorization: `Bearer ${this.opts.token}`,

@@ -90,6 +90,12 @@ export function batchMessages(batch: CommitBatch): string[] {
 
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * GitHub marks API responses cacheable for 60 s, so a browser fetch can return a ref from before
+ * our own last write. (`cache` is missing from Node's RequestInit typings; Node accepts it.)
+ */
+export const NO_STORE = { cache: "no-store" } as RequestInit;
+
 export interface ApiWriterOptions {
   owner: string;
   repo: string;
@@ -274,6 +280,7 @@ export class ApiWriter implements BoardWriter {
   private async json<T>(method: string, path: string, body?: unknown): Promise<T> {
     const res = await this.opts.fetch(`${this.opts.apiBase}${path}`, {
       method,
+      ...NO_STORE,
       headers: {
         Accept: "application/vnd.github+json",
         Authorization: `Bearer ${this.opts.token}`,

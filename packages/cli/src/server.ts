@@ -171,6 +171,17 @@ export function createHelperServer(opts: HelperOptions & { status: WriteStatus }
         );
         return send(res, 200, { state: turn.state, aiCol: turn.aiCol }, origin);
       }
+      if (url.pathname === "/v1/difficulty") {
+        const difficulty = body.difficulty;
+        if (!DIFFICULTIES.includes(difficulty as Difficulty)) throw new HttpError(400, "difficulty");
+        const turn = await opts.engine.setDifficulty(
+          intField(body, "gameId", 1, 1_000_000),
+          difficulty as Difficulty,
+        );
+        track(opts, turn.written, log);
+        log(`difficulty set to ${difficulty}`);
+        return send(res, 200, { state: turn.state, aiCol: null }, origin);
+      }
       if (url.pathname === "/v1/resign") {
         const turn = await opts.engine.resign(intField(body, "gameId", 1, 1_000_000));
         track(opts, turn.written, log);

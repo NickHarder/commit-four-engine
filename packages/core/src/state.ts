@@ -153,6 +153,16 @@ export function applyMove(state: BoardState, player: Player, col: number, now = 
   return { ...state, games: [...state.games.slice(0, -1), updated], updatedAt: now.toISOString() };
 }
 
+/** Changes the current game's difficulty; the AI uses it from its next move. */
+export function setDifficulty(state: BoardState, difficulty: Difficulty, now = new Date()): BoardState {
+  const game = currentGame(state);
+  if (!game) throw new Error("no game in progress");
+  if (!DIFFICULTIES.includes(difficulty)) throw new Error(`unknown difficulty ${String(difficulty)}`);
+  if (game.difficulty === difficulty) return state;
+  const updated: GameRecord = { ...game, difficulty };
+  return { ...state, games: [...state.games.slice(0, -1), updated], updatedAt: now.toISOString() };
+}
+
 export function resign(state: BoardState, now = new Date()): BoardState {
   const game = currentGame(state);
   if (!game) throw new Error("no game in progress");

@@ -1,6 +1,6 @@
 /** Offscreen document: hosts the AI worker. Only chrome.runtime messaging is available here. */
 
-import type { AiRequest } from "./messages";
+import type { AiRequest, AiWarmup } from "./messages";
 
 let worker: Worker | null = null;
 let seq = 0;
@@ -16,8 +16,14 @@ function getWorker(): Worker {
   return worker;
 }
 
-chrome.runtime.onMessage.addListener((msg: AiRequest, sender, sendResponse) => {
-  if (msg?.type !== "c4:ai" || msg.target !== "offscreen" || sender.id !== chrome.runtime.id) return false;
+chrome.runtime.onMessage.addListener((msg: AiRequest | AiWarmup, sender, sendResponse) => {
+  if (msg?.target !== "offscreen" || sender.id !== chrome.runtime.id) return false;
+  if (msg.type === "c4:ai-warm") {
+    getWorker();
+    sendResponse({ ok: true });
+    return false;
+  }
+  if (msg.type !== "c4:ai") return false;
   const id = ++seq;
   waiting.set(id, sendResponse);
   getWorker().postMessage({ id, moves: msg.moves, difficulty: msg.difficulty });

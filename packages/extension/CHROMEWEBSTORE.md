@@ -117,3 +117,4 @@ Screenshots must not show GitHub's logo prominently or imply endorsement.
 | Version | Date | Summary |
 |---|---|---|
 | 0.1.0 | 2026-10-08 | First release: board overlay, local-helper and browser-only modes, Casual/Hard/Perfect AI. |
+| 0.1.1 | 2026-10-09 | Fresh GitHub reads (no "board changed elsewhere" after quick moves), working Resign and Settings, difficulty changeable mid-game, faster turns with a timing breakdown. |

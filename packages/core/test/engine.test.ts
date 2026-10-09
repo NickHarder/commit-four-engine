@@ -231,3 +231,48 @@ describe("template copies of the engine repo", () => {
     expect(JSON.parse(gh.file(SENTINEL_FILE)!).owner).toBe("");
   });
 });
+
+describe("changing difficulty mid-game", () => {
+  it("applies to the AI's next move and is saved with the game", async () => {
+    const { gh, engine } = setup();
+    await engine.load();
+    await (await engine.newGame({ difficulty: "casual", humanFirst: true })).written;
+    await (await engine.move(1, 0, 3)).written;
+    await (await engine.setDifficulty(1, "perfect")).written;
+    expect(JSON.parse(gh.file(STATE_PATH)!).games[0].difficulty).toBe("perfect");
+    await (await engine.move(1, 2, 2)).written;
+    const saved = JSON.parse(gh.file(STATE_PATH)!).games[0];
+    expect(saved.difficulty).toBe("perfect");
+    expect(saved.moves).toHaveLength(4);
+  });
+});
+
+describe("GitHub reads bypass the HTTP cache", () => {
+  it("sees its own previous write immediately even when GitHub's responses are cacheable", async () => {
+    const { gh, engine } = setup();
+    gh.simulateHttpCache = true;
+    await engine.load();
+    await (await engine.newGame({ difficulty: "casual", humanFirst: true })).written;
+    for (const [ply, col] of [
+      [0, 0],
+      [2, 6],
+      [4, 0],
+    ] as const) {
+      await (await engine.move(1, ply, col)).written;
+    }
+    expect(JSON.parse(gh.file(STATE_PATH)!).games[0].moves).toHaveLength(6);
+    // a fresh engine (like the extension after a page load) reads the latest state, not a cached one
+    const fresh = new GameEngine({
+      writer: new ApiWriter({
+        owner: OWNER,
+        repo: "my-board",
+        token: "t",
+        fetch: gh.fetch,
+        minIntervalMs: 0,
+      }),
+      owner: OWNER,
+      pieceAuthor: author,
+    });
+    expect((await fresh.load()).games[0]!.moves).toHaveLength(6);
+  });
+});

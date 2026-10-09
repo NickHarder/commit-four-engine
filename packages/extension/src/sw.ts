@@ -14,6 +14,7 @@ import {
 } from "@commit-four/core";
 import {
   type AiRequest,
+  type AiWarmup,
   isRequest,
   type Request,
   type Response,
@@ -38,7 +39,7 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
   if (!isRequest(message) || !trustedSender(sender)) return false;
   (async () => {
     try {
-      sendResponse(await handle(message, sender.tab?.id));
+      sendResponse(await handle(message, sender.tab));
     } catch (e) {
       sendResponse(errorResponse(e));
     }
@@ -63,11 +64,16 @@ async function restrictStorage(): Promise<void> {
   }
 }
 
-async function handle(req: Request, tabId: number | undefined): Promise<Response> {
+async function handle(req: Request, tab: chrome.tabs.Tab | undefined): Promise<Response> {
   if (req.type === "c4:openOptions") {
-    await chrome.runtime.openOptionsPage();
+    // always a fresh tab next to the game (openOptionsPage() may just focus an old tab elsewhere)
+    await chrome.tabs.create({
+      url: chrome.runtime.getURL("options.html"),
+      ...(tab?.id !== undefined ? { openerTabId: tab.id, index: tab.index + 1 } : {}),
+    });
     return { ok: true, configured: true, state: null };
   }
+  const tabId = tab?.id;
   const settings = await loadSettings();
   if (!isConfigured(settings)) return { ok: true, configured: false, state: null };
   const base: Base = {
@@ -132,6 +138,10 @@ async function companion(req: Request, s: Settings, base: Base): Promise<Respons
       const r = await call("/v1/resign", { gameId: req.gameId });
       return { ...base, state: r.state ?? null };
     }
+    case "c4:setDifficulty": {
+      const r = await call("/v1/difficulty", { gameId: req.gameId, difficulty: req.difficulty });
+      return { ...base, state: r.state ?? null };
+    }
     default:
       throw new Error("unsupported request");
   }
@@ -139,19 +149,39 @@ async function companion(req: Request, s: Settings, base: Base): Promise<Respons
 
 // --- browser-only mode: engine + GitHub API in the extension ----------------------------------
 
-let engine: { key: string; engine: GameEngine; writes: WriteInfo } | null = null;
+/**
+ * One warm engine per board, reused across moves so a move never waits on a reload. It reloads
+ * from GitHub when a page asks for the state (page load) and nothing is being written, and once
+ * more if a move looks stale, before reporting that the board changed elsewhere.
+ */
+let live: { key: string; engine: GameEngine; writes: WriteInfo; tabs: Set<number> } | null = null;
+
+function broadcast(update: WriteUpdate): void {
+  for (const tabId of live?.tabs ?? []) {
+    chrome.tabs.sendMessage(tabId, update).catch(() => live?.tabs.delete(tabId));
+  }
+}
 
 async function engineFor(
   s: Settings,
   tabId: number | undefined,
+  opts: { fresh: boolean },
 ): Promise<{ engine: GameEngine; writes: WriteInfo }> {
   const key = `${s.owner}/${s.repo}@${s.branch}:${s.pat.slice(-6)}`;
-  // Reuse the live engine while it has writes in flight (it is ahead of the remote); otherwise
-  // start from the remote truth.
-  if (engine && engine.key === key && engine.writes.pending > 0) return engine;
-  const writes: WriteInfo = engine?.key === key ? engine.writes : { pending: 0 };
+  if (live && live.key === key) {
+    if (tabId !== undefined) live.tabs.add(tabId);
+    if (opts.fresh && live.writes.pending === 0) await live.engine.load(true);
+    return live;
+  }
+  const writes: WriteInfo = { pending: 0 };
   const e = new GameEngine({
-    writer: new ApiWriter({ owner: s.owner, repo: s.repo, token: s.pat, branch: s.branch }),
+    writer: new ApiWriter({
+      owner: s.owner,
+      repo: s.repo,
+      token: s.pat,
+      branch: s.branch,
+      minIntervalMs: 100,
+    }),
     owner: s.owner,
     pieceAuthor: s.author!,
     chooser: chooseInOffscreen,
@@ -165,22 +195,28 @@ async function engineFor(
         writes.pending = Math.max(0, writes.pending - 1);
         writes.lastError = { message: ev.error, at: new Date().toISOString() };
       }
-      if (
-        tabId !== undefined &&
-        (ev.type === "write-done" || ev.type === "write-failed" || ev.type === "resynced")
-      ) {
-        const update: WriteUpdate = {
-          type: "c4:writeUpdate",
-          writes,
-          ...(ev.type === "resynced" ? { state: ev.state } : {}),
-        };
-        void chrome.tabs.sendMessage(tabId, update).catch(() => undefined);
+      if (ev.type === "write-done" || ev.type === "write-failed" || ev.type === "resynced") {
+        broadcast({ type: "c4:writeUpdate", writes, ...(ev.type === "resynced" ? { state: ev.state } : {}) });
       }
     },
   });
   await e.load();
-  engine = { key, engine: e, writes };
-  return engine;
+  live = { key, engine: e, writes, tabs: new Set(tabId !== undefined ? [tabId] : []) };
+  return live;
+}
+
+/** Runs a game action; if the warm state turns out to be stale, reloads once and retries. */
+async function withFreshRetry<T>(e: GameEngine, writes: WriteInfo, action: () => Promise<T>): Promise<T> {
+  try {
+    return await action();
+  } catch (err) {
+    const stale =
+      err instanceof StaleMoveError ||
+      (err instanceof Error && /already in progress|no game in progress/.test(err.message));
+    if (!stale || writes.pending > 0) throw err;
+    await e.load(true);
+    return action();
+  }
 }
 
 async function browserOnly(
@@ -189,25 +225,27 @@ async function browserOnly(
   base: Base,
   tabId: number | undefined,
 ): Promise<Response> {
-  const { engine: e, writes } = await engineFor(s, tabId);
+  const { engine: e, writes } = await engineFor(s, tabId, { fresh: req.type === "c4:getState" });
+  const done = (t: { state: BoardState; aiCol: number | null; written: Promise<unknown> }): Response => {
+    t.written.catch(() => undefined);
+    return { ...base, state: t.state, aiCol: t.aiCol, writes };
+  };
   switch (req.type) {
     case "c4:getState":
+      void warmAi();
       return { ...base, state: e.current(), writes };
-    case "c4:newGame": {
-      const t = await e.newGame({ difficulty: req.difficulty, humanFirst: req.humanFirst });
-      t.written.catch(() => undefined);
-      return { ...base, state: t.state, aiCol: t.aiCol, writes };
-    }
-    case "c4:move": {
-      const t = await e.move(req.gameId, req.ply, req.col);
-      t.written.catch(() => undefined);
-      return { ...base, state: t.state, aiCol: t.aiCol, writes };
-    }
-    case "c4:resign": {
-      const t = await e.resign(req.gameId);
-      t.written.catch(() => undefined);
-      return { ...base, state: t.state, writes };
-    }
+    case "c4:newGame":
+      return done(
+        await withFreshRetry(e, writes, () =>
+          e.newGame({ difficulty: req.difficulty, humanFirst: req.humanFirst }),
+        ),
+      );
+    case "c4:move":
+      return done(await withFreshRetry(e, writes, () => e.move(req.gameId, req.ply, req.col)));
+    case "c4:resign":
+      return done(await withFreshRetry(e, writes, () => e.resign(req.gameId)));
+    case "c4:setDifficulty":
+      return done(await withFreshRetry(e, writes, () => e.setDifficulty(req.gameId, req.difficulty)));
     default:
       throw new Error("unsupported request");
   }
@@ -234,6 +272,16 @@ async function ensureOffscreen(): Promise<void> {
       creating = null;
     });
   await creating;
+}
+
+async function warmAi(): Promise<void> {
+  try {
+    await ensureOffscreen();
+    const msg: AiWarmup = { type: "c4:ai-warm", target: "offscreen" };
+    await chrome.runtime.sendMessage(msg);
+  } catch {
+    // warming is best effort
+  }
 }
 
 async function chooseInOffscreen(moves: number[], difficulty: AiRequest["difficulty"]): Promise<number> {

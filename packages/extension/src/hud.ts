@@ -4,6 +4,7 @@ import { DIFFICULTIES, type Difficulty } from "@commit-four/core";
 
 export type HudAction =
   | { type: "newGame"; difficulty: Difficulty; humanFirst: boolean }
+  | { type: "difficulty"; difficulty: Difficulty }
   | { type: "resign" }
   | { type: "settings" };
 
@@ -15,6 +16,10 @@ export interface HudView {
   link?: { href: string; label: string };
   canNewGame: boolean;
   canResign: boolean;
+  /** Show the difficulty picker; during a game it changes the AI from its next move. */
+  canChangeDifficulty?: boolean;
+  /** The current game's difficulty (keeps the picker in sync). */
+  difficulty?: Difficulty;
 }
 
 const STYLE = `
@@ -91,6 +96,9 @@ export class Hud {
       this.el.difficulty.append(o);
     }
     this.el.difficulty.value = "hard";
+    this.el.difficulty.addEventListener("change", () => {
+      if (this.inGame) onAction({ type: "difficulty", difficulty: this.el.difficulty.value as Difficulty });
+    });
     this.el.newGame.addEventListener("click", () =>
       onAction({
         type: "newGame",
@@ -104,7 +112,11 @@ export class Hud {
     );
   }
 
+  private inGame = false;
+
   render(v: HudView): void {
+    this.inGame = !v.canNewGame && !!v.canChangeDifficulty;
+    if (v.difficulty && document.activeElement !== this.host) this.el.difficulty.value = v.difficulty;
     this.el.title.textContent = v.title;
     if (this.el.status.textContent !== v.status) this.el.status.textContent = v.status;
     this.el.sync.textContent = v.sync ?? "";
@@ -117,7 +129,7 @@ export class Hud {
       this.el.link.textContent = v.link.label;
     }
     this.el.newGame.hidden = !v.canNewGame;
-    this.el.difficulty.parentElement!.hidden = !v.canNewGame;
+    this.el.difficulty.parentElement!.hidden = !v.canNewGame && !v.canChangeDifficulty;
     this.el.humanFirst.parentElement!.hidden = !v.canNewGame;
     this.el.resign.hidden = !v.canResign;
   }

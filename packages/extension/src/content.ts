@@ -37,6 +37,8 @@ interface View {
   lastMoveAt: number | null;
   syncNote: string | null;
   pollTimer: ReturnType<typeof setTimeout> | null;
+  /** Where the last action's time went (ms since the click). */
+  timing: { start: number; ai?: number; saved?: number; graph?: number } | null;
   hud: Hud;
 }
 
@@ -71,6 +73,7 @@ function attach(): void {
     lastMoveAt: null,
     syncNote: null,
     pollTimer: null,
+    timing: null,
     hud,
   };
   cal.container.addEventListener("click", onClick, true);
@@ -227,6 +230,8 @@ function hudView(v: View): HudView {
       status,
       canNewGame: false,
       canResign: !v.busy,
+      canChangeDifficulty: !v.busy,
+      difficulty: current.difficulty,
       ...(sync ? { sync } : {}),
       ...(error ? { error } : {}),
     };
@@ -316,6 +321,7 @@ async function play(col: number): Promise<void> {
   v.busy = true;
   v.error = null;
   v.syncNote = null;
+  v.timing = { start: Date.now() };
   clearGhost();
   render();
   const r = await send({ type: "c4:move", gameId: game.id, ply: game.moves.length, col }).catch(
@@ -329,6 +335,7 @@ async function play(col: number): Promise<void> {
   } else {
     v.state = r.state;
     v.lastMoveAt = Date.now();
+    if (v.timing) v.timing.ai = Date.now() - v.timing.start;
     if (r.writes) v.writes = r.writes;
   }
   render();
@@ -339,16 +346,26 @@ async function onHudAction(a: HudAction): Promise<void> {
   const v = view;
   if (!v) return;
   if (a.type === "settings") {
-    await send({ type: "c4:openOptions" });
+    const r = await send({ type: "c4:openOptions" }).catch(
+      (e: unknown): Response => ({ ok: false, error: String(e) }),
+    );
+    if (!r.ok) {
+      v.error = `Couldn't open settings: ${r.error}. Click the Commit Four icon in the toolbar instead.`;
+      render();
+    }
     return;
   }
+  const gameId = v.state ? (currentGame(v.state)?.id ?? 0) : 0;
   v.busy = true;
   v.error = null;
+  v.timing = { start: Date.now() };
   render();
   const req: Request =
     a.type === "newGame"
       ? { type: "c4:newGame", difficulty: a.difficulty, humanFirst: a.humanFirst }
-      : { type: "c4:resign", gameId: currentGame(v.state!)?.id ?? 0 };
+      : a.type === "difficulty"
+        ? { type: "c4:setDifficulty", gameId, difficulty: a.difficulty }
+        : { type: "c4:resign", gameId };
   const r = await send(req).catch((e: unknown): Response => ({ ok: false, error: String(e) }));
   if (view !== v) return;
   v.busy = false;
@@ -368,17 +385,21 @@ async function onHudAction(a: HudAction): Promise<void> {
 
 // --- confirmation polling -----------------------------------------------------------------------
 
-function startPolling(): void {
+function startPolling(opts: { now?: boolean } = {}): void {
   const v = view;
   if (!v) return;
   if (v.pollTimer) clearTimeout(v.pollTimer);
   const started = v.lastMoveAt ?? Date.now();
-  let delay = 3000;
+  // every 1.5 s for the first 30 s (GitHub usually updates within seconds), then back off
+  const nextDelay = (elapsed: number, prev: number) =>
+    elapsed < 30_000 ? 1500 : Math.min(prev * 1.5, elapsed > 900_000 ? 60_000 : 15_000);
+  let delay = 1500;
   const tick = async () => {
     if (view !== v) return;
     try {
       const res = await fetch(contributionsFragmentPath(v.cal.login, v.cal.from, v.cal.to), {
         credentials: "same-origin",
+        cache: "no-store",
         headers: { Accept: "text/html" },
       });
       const cal = parseContributionCalendar(await res.text());
@@ -397,26 +418,44 @@ function startPolling(): void {
     if (view !== v) return;
     const pending = pendingDates().length;
     const elapsed = Date.now() - started;
+    if (pending === 0 && v.timing && v.timing.graph === undefined)
+      v.timing.graph = Date.now() - v.timing.start;
     v.syncNote =
       pending === 0
-        ? `GitHub caught up in ${Math.max(1, Math.round(elapsed / 1000))}s.`
+        ? timingNote(v)
         : elapsed > 120_000
           ? `GitHub's graph is lagging (${Math.round(elapsed / 60_000)} min so far) — keep playing, it will catch up.`
           : null;
     render();
     if (pending === 0) return;
-    delay = Math.min(delay * 1.5, elapsed > 900_000 ? 60_000 : 15_000);
+    delay = nextDelay(elapsed, delay);
     v.pollTimer = setTimeout(tick, delay);
   };
-  v.pollTimer = setTimeout(tick, delay);
+  v.pollTimer = setTimeout(tick, opts.now ? 0 : delay);
+}
+
+function timingNote(v: View): string {
+  const t = v.timing;
+  const secs = (ms: number) => `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`;
+  if (!t || t.graph === undefined) return "Your graph is up to date.";
+  const parts = [
+    ...(t.ai !== undefined ? [`AI answered in ${secs(t.ai)}`] : []),
+    ...(t.saved !== undefined ? [`saved in ${secs(t.saved)}`] : []),
+    `GitHub caught up in ${secs(t.graph)}`,
+  ];
+  return `${parts.join(" · ")}.`;
 }
 
 chrome.runtime.onMessage.addListener((msg: WriteUpdate, sender) => {
   if (sender.id !== chrome.runtime.id || msg?.type !== "c4:writeUpdate" || !view) return;
   view.writes = msg.writes;
   if (msg.state) view.state = msg.state;
+  const t = view.timing;
+  const savedAt = msg.writes.lastOk ? Date.parse(msg.writes.lastOk.at) : Number.NaN;
+  if (t && t.saved === undefined && savedAt >= t.start) t.saved = savedAt - t.start;
   render();
-  startPolling();
+  // the write just landed: look at the graph right away
+  startPolling({ now: true });
 });
 
 onPageChange(attach);
