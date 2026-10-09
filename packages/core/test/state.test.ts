@@ -2,11 +2,15 @@ import { describe, expect, it } from "vitest";
 import { addDays, boardCells, slotAnchorSunday } from "../src/calendar";
 import { chooseRollingCounts, findEmptyWindows } from "../src/calibrate";
 import { computeLevels } from "../src/levels";
-import { planWrite, targetCounts } from "../src/renderPlan";
+import { gamePieces, planWrite, targetCounts } from "../src/renderPlan";
 import {
   applyMove,
+  boardSeasons,
   currentGame,
+  findEmptySeason,
   initialState,
+  needsNewSeason,
+  nextPlacement,
   parseState,
   playerToMove,
   resign,
@@ -21,7 +25,7 @@ describe("board state", () => {
     let s = startGame(initialState("NickHarder", now), { difficulty: "hard", humanFirst: true, now });
     const g = currentGame(s)!;
     expect(g.placement).toEqual({ mode: "season", season: 2016, slot: 0, anchorSunday: "2016-01-10" });
-    expect(s.anchors).toEqual([{ date: "2016-01-01", count: 4 }]);
+    expect(s.anchors).toEqual([{ date: "2016-01-01", count: 14 }]);
     expect(playerToMove(g)).toBe("human");
     expect(() => applyMove(s, "ai", 3, now)).toThrow(/not the ai/);
     s = applyMove(s, "human", 3, now);
@@ -71,7 +75,7 @@ describe("board state", () => {
     const s2 = applyMove(applyMove(s1, "human", 3, now), "ai", 3, now);
     const plan = planWrite(s0, s2);
     expect(plan).toEqual([
-      { date: "2016-01-01", count: 4, kind: "anchor", message: "c4: season 2016 scale anchor" },
+      { date: "2016-01-01", count: 14, kind: "anchor", message: "c4: season 2016 scale anchor" },
       // same column, one row up = the Friday before
       { date: "2016-02-05", count: 2, kind: "ai", message: "c4: game 1 ply 2 ai column 4" },
       { date: "2016-02-06", count: 4, kind: "human", message: "c4: game 1 ply 1 human column 4" },
@@ -93,6 +97,52 @@ describe("board state", () => {
     expect(levels.get("2016-01-30")).toBe(4);
   });
 
+  it("keeps human squares at level 4 and AI squares at level 2 through full seasons", () => {
+    let seed = 7;
+    const rand = () => {
+      seed = (seed * 1103515245 + 12345) % 2 ** 31;
+      return seed / 2 ** 31;
+    };
+    let s = initialState("NickHarder", now);
+    let checked = 0;
+    for (let game = 0; game < 8; game++) {
+      s = startGame(s, { difficulty: "casual", humanFirst: game % 2 === 0, now });
+      while (currentGame(s)) {
+        const g = currentGame(s)!;
+        const open = [0, 1, 2, 3, 4, 5, 6].filter(
+          (c) => [...g.moves].filter((m) => m === String(c + 1)).length < 6,
+        );
+        s = applyMove(s, playerToMove(g), open[Math.floor(rand() * open.length)]!, now);
+        const season = g.placement.season!;
+        const targets = targetCounts(s);
+        const days = Array.from({ length: season % 4 === 0 ? 366 : 365 }, (_, i) => {
+          const date = addDays(`${season}-01-01`, i);
+          return { date, count: targets.get(date) ?? 0 };
+        });
+        const levels = computeLevels(days);
+        const pieces = s.games.filter((x) => x.placement.season === season).flatMap(gamePieces);
+        // the only exception: the AI's opening square, before any human square exists that year
+        if (!pieces.some((p) => p.player === "human")) continue;
+        for (const p of pieces) expect(levels.get(p.date)).toBe(p.player === "human" ? 4 : 2);
+        expect(levels.get(`${season}-01-01`)).toBe(4);
+        checked++;
+      }
+    }
+    expect(s.games.at(-1)!.placement.season).toBe(2015);
+    expect(checked).toBeGreaterThan(100);
+  });
+
+  it("tops up an old 4-commit anchor on the next move", () => {
+    const old = startGame(initialState("NickHarder", now), { difficulty: "hard", humanFirst: true, now });
+    old.anchors[0]!.count = 4; // as written by version 0.1
+    const next = applyMove(old, "human", 3, now);
+    expect(next.anchors).toEqual([{ date: "2016-01-01", count: 14 }]);
+    expect(planWrite(old, next)).toEqual([
+      { date: "2016-01-01", count: 10, kind: "anchor", message: "c4: season 2016 scale anchor" },
+      { date: "2016-02-06", count: 4, kind: "human", message: "c4: game 1 ply 1 human column 4" },
+    ]);
+  });
+
   it("renders an SVG and supports resigning", () => {
     let s = startGame(initialState("NickHarder", now), { difficulty: "perfect", humanFirst: false, now });
     s = applyMove(s, "ai", 3, now);
@@ -100,6 +150,47 @@ describe("board state", () => {
     s = resign(s, now);
     expect(s.games[0]!.status).toBe("resigned");
     expect(renderBoardSvg(s.games[0]!)).toContain("resigned");
+  });
+});
+
+describe("board years", () => {
+  const playOut = (s: ReturnType<typeof initialState>) => {
+    for (const col of [0, 1, 0, 1, 0, 1])
+      s = applyMove(s, s.games.at(-1)!.moves.length % 2 ? "ai" : "human", col, now);
+    return applyMove(s, "human", 0, now);
+  };
+
+  it("fills the board's years before asking for a new one", () => {
+    let s = initialState("NickHarder", now);
+    expect(needsNewSeason(s)).toBe(true);
+    s = playOut(startGame(s, { difficulty: "casual", humanFirst: true, now, season: 2021 }));
+    expect(s.games[0]!.placement).toMatchObject({ season: 2021, slot: 0 });
+    expect(boardSeasons(s)).toEqual([2021]);
+    expect(needsNewSeason(s)).toBe(false);
+    // a season passed while the board's year still has room is ignored
+    s = playOut(startGame(s, { difficulty: "casual", humanFirst: true, now, season: 2012 }));
+    expect(s.games[1]!.placement).toMatchObject({ season: 2021, slot: 1 });
+    for (let i = 2; i < 6; i++) s = playOut(startGame(s, { difficulty: "casual", humanFirst: true, now }));
+    expect(needsNewSeason(s)).toBe(true);
+    expect(() => nextPlacement(s, { season: 2021, now })).toThrow(/already used/);
+    expect(() => nextPlacement(s, { season: 2025, now })).toThrow(/from 2005 to 2024/);
+    expect(nextPlacement(s, { season: 2012, now })).toMatchObject({ season: 2012, slot: 0 });
+  });
+
+  it("finds the newest past year with an empty graph, at least two years back", async () => {
+    const asked: number[] = [];
+    const nonEmpty = new Set([2024, 2023, 2022, 2019, 2018, 2017]);
+    const year = await findEmptySeason({
+      now,
+      exclude: [2021],
+      isEmpty: async (y) => {
+        asked.push(y);
+        return !nonEmpty.has(y);
+      },
+    });
+    expect(year).toBe(2020);
+    expect(asked).toEqual([2024, 2023, 2022, 2020]);
+    expect(await findEmptySeason({ now, isEmpty: async () => false })).toBeNull();
   });
 });
 

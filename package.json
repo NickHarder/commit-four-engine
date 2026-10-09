@@ -14,16 +14,22 @@
     "build": "npm run build --workspaces --if-present",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p packages/extension/tsconfig.json --noEmit",
     "lint": "biome check .",
     "format": "biome check --write .",
     "bench": "tsx scripts/bench.ts",
-    "build:book": "esbuild scripts/build-book.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/commit-four/build-book.mjs --log-level=warning && node node_modules/.cache/commit-four/build-book.mjs"
+    "build:book": "esbuild scripts/build-book.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/commit-four/build-book.mjs --log-level=warning && node node_modules/.cache/commit-four/build-book.mjs",
+    "test:e2e": "vitest run packages/extension",
+    "setup": "npm run build && node packages/cli/dist/cli.js setup",
+    "serve": "node packages/cli/dist/cli.js serve",
+    "play": "node packages/cli/dist/cli.js play",
+    "doctor": "node packages/cli/dist/cli.js doctor"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
     "@types/node": "22.20.5",
     "esbuild": "0.28.2",
+    "playwright-core": "^1.56.1",
     "tsx": "4.23.15",
     "typescript": "5.9.3",
     "vitest": "5.0.3"

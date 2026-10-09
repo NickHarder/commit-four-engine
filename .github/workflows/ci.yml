@@ -3,7 +3,10 @@ name: CI
 on:
   push:
     branches: [main, "claude/**"]
+    # game moves only touch the board files; don't spend a CI run on every move
+    paths-ignore: [".commit-four-board", "state/**"]
   pull_request:
+    paths-ignore: [".commit-four-board", "state/**"]
 
 permissions:
   contents: read
@@ -13,12 +16,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Install Chromium for the extension end-to-end tests
+        run: npx playwright-core install --with-deps chromium
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
