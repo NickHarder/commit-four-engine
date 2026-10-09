@@ -15,7 +15,7 @@ import { FakeGitHub } from "../../core/test/fakeGitHub";
 import { calendarHtml } from "../../core/test/fixtures";
 import { profilePage, withBackground } from "./fakeProfile";
 import { type LocalGitHub, startLocalGitHub } from "./githubServer";
-import { canRunChromium, launchWithExtension } from "./launch";
+import { canRunChromium, extensionWorker, launchWithExtension } from "./launch";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const extDir = join(here, "..");
@@ -71,7 +71,7 @@ describe.skipIf(!canRunChromium())("browser-only mode against a caching GitHub",
     userDir = mkdtempSync(join(tmpdir(), "c4-chrome-"));
     // no Playwright routing here: it would turn off the HTTP cache this test is about
     context = await launchWithExtension(buildDir, userDir, { localGitHub: github });
-    const sw = context.serviceWorkers()[0] ?? (await context.waitForEvent("serviceworker"));
+    const sw = await extensionWorker(context);
     extensionId = new URL(sw.url()).host;
     await sw.evaluate((settings) => chrome.storage.local.set({ settings }), {
       mode: "browser",

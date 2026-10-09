@@ -13,7 +13,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { FakeAccount } from "../../core/test/fakeAccount";
 import { calendarHtml } from "../../core/test/fixtures";
 import { profilePage, withBackground } from "./fakeProfile";
-import { canRunChromium, launchWithExtension } from "./launch";
+import { canRunChromium, extensionWorker, launchWithExtension } from "./launch";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const extDir = join(here, "..");
@@ -78,7 +78,7 @@ describe.skipIf(!canRun)("sign in with GitHub, create the board, play", () => {
       }
       return route.fulfill({ status: 404, body: "" });
     });
-    const sw = context.serviceWorkers()[0] ?? (await context.waitForEvent("serviceworker"));
+    const sw = await extensionWorker(context);
     extensionId = new URL(sw.url()).host;
   }, 60_000);
 

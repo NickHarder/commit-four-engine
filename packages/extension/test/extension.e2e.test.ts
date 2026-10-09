@@ -15,7 +15,7 @@ import { createHelperServer } from "../../cli/src/server";
 import { FakeGitHub } from "../../core/test/fakeGitHub";
 import { calendarHtml } from "../../core/test/fixtures";
 import { profilePage, withBackground } from "./fakeProfile";
-import { canRunChromium, launchWithExtension } from "./launch";
+import { canRunChromium, extensionWorker, launchWithExtension } from "./launch";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const extDir = join(here, "..");
@@ -88,7 +88,7 @@ describe.skipIf(!canRun)("extension on a profile page (companion mode)", () => {
       }
       return route.fulfill({ status: 404, body: "not found" });
     });
-    const sw = context.serviceWorkers()[0] ?? (await context.waitForEvent("serviceworker"));
+    const sw = await extensionWorker(context);
     await sw.evaluate((settings) => chrome.storage.local.set({ settings }), {
       mode: "companion",
       owner: OWNER,

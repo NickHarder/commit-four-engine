@@ -9,7 +9,7 @@
  * `hostResolverRules` instead, which send every GitHub host to a local server (see
  * `githubServer.ts`), so the real GitHub stays unreachable without any routing.
  */
-import { type BrowserContext, chromium } from "playwright-core";
+import { type BrowserContext, chromium, type Worker } from "playwright-core";
 
 process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS = "1";
 
@@ -51,4 +51,22 @@ export async function launchWithExtension(
     );
   }
   return context;
+}
+
+/**
+ * The Commit Four service worker, once its extension APIs are usable. Taking the first service
+ * worker the moment it appears isn't enough: on a slow CI machine an evaluate found `chrome`
+ * without `chrome.storage`, so pick ours by its script URL and wait until storage answers.
+ */
+export async function extensionWorker(context: BrowserContext, timeoutMs = 30_000): Promise<Worker> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const sw = context.serviceWorkers().find((w) => /^chrome-extension:\/\/[a-p]{32}\/sw\.js$/.test(w.url()));
+    const ready = sw
+      ? await sw.evaluate(() => typeof chrome !== "undefined" && !!chrome.storage?.local).catch(() => false)
+      : false;
+    if (sw && ready) return sw;
+    if (Date.now() > deadline) throw new Error("the Commit Four service worker never became ready");
+    await new Promise((r) => setTimeout(r, 100));
+  }
 }

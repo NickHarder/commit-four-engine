@@ -13,7 +13,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { FakeGitHub } from "../../core/test/fakeGitHub";
 import { calendarHtml } from "../../core/test/fixtures";
 import { profilePage, withBackground } from "./fakeProfile";
-import { canRunChromium, launchWithExtension } from "./launch";
+import { canRunChromium, extensionWorker, launchWithExtension } from "./launch";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const extDir = join(here, "..");
@@ -76,7 +76,7 @@ describe.skipIf(!canRun)("extension on a profile page (browser-only mode)", () =
       }
       return route.fulfill({ status: 404, body: "" });
     });
-    const sw = context.serviceWorkers()[0] ?? (await context.waitForEvent("serviceworker"));
+    const sw = await extensionWorker(context);
     await sw.evaluate((settings) => chrome.storage.local.set({ settings }), {
       mode: "browser",
       owner: OWNER,
@@ -135,7 +135,7 @@ describe.skipIf(!canRun)("extension on a profile page (browser-only mode)", () =
   }, 60_000);
 
   it("starts over from Settings, and the next board skips a year with other activity", async () => {
-    const sw = context.serviceWorkers()[0]!;
+    const sw = await extensionWorker(context);
     const options = await context.newPage();
     await options.goto(`chrome-extension://${new URL(sw.url()).host}/options.html`);
     await options.getByRole("button", { name: "Erase all games…" }).click();
