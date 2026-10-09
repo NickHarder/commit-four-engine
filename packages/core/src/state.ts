@@ -21,8 +21,13 @@ export const STATE_PATH = "state/game.json";
 export const SVG_PATH = "state/board.svg";
 /** Author of state commits. `.invalid` is a reserved TLD, so these never count as anyone's contribution. */
 export const ENGINE_AUTHOR = { name: "Commit Four", email: "engine@commit-four.invalid" } as const;
-/** Commits per square in season mode: AI = level 2, human = level 4 (see levels.ts). */
-export const SEASON_COUNTS = { human: 4, ai: 2, anchor: 4 } as const;
+/**
+ * Commits per square in season mode: AI = level 2, human = level 4 (see levels.ts). The Jan 1
+ * anchor is always the year's first and largest value, so GitHub drops it as an outlier and the
+ * human count becomes the top of the scale. It must differ from both piece counts (an anchor of 4
+ * took every human square out of the scale with it) and stay under 15, so GitHub drops only it.
+ */
+export const SEASON_COUNTS = { human: 4, ai: 2, anchor: 14 } as const;
 /** Account created 2017-07-08, so 2016 and earlier are guaranteed-empty canvases for the default owner. */
 export const DEFAULT_SEASON = 2016;
 
@@ -121,6 +126,7 @@ export function startGame(state: BoardState, opts: NewGameOptions): BoardState {
     if (!anchors.some((a) => a.date === anchorDate))
       anchors.push({ date: anchorDate, count: SEASON_COUNTS.anchor });
   }
+  const lifted = liftAnchors(anchors);
   const game: GameRecord = {
     id: (state.games.at(-1)?.id ?? 0) + 1,
     placement,
@@ -131,7 +137,15 @@ export function startGame(state: BoardState, opts: NewGameOptions): BoardState {
     status: "in_progress",
     startedAt: now,
   };
-  return { ...state, games: [...state.games, game], anchors, updatedAt: now };
+  return { ...state, games: [...state.games, game], anchors: lifted, updatedAt: now };
+}
+
+/**
+ * Raises season anchors written by older versions (4 commits) to the current count. Writes are
+ * append-only, so this only ever adds commits to Jan 1.
+ */
+export function liftAnchors(anchors: BoardState["anchors"]): BoardState["anchors"] {
+  return anchors.map((a) => (a.count < SEASON_COUNTS.anchor ? { ...a, count: SEASON_COUNTS.anchor } : a));
 }
 
 /** Plays `col` (0-based) for `player` in the current game. Returns the new state. */
@@ -150,7 +164,12 @@ export function applyMove(state: BoardState, player: Player, col: number, now = 
     status,
     ...(status !== "in_progress" ? { endedAt: now.toISOString() } : {}),
   };
-  return { ...state, games: [...state.games.slice(0, -1), updated], updatedAt: now.toISOString() };
+  return {
+    ...state,
+    games: [...state.games.slice(0, -1), updated],
+    anchors: liftAnchors(state.anchors),
+    updatedAt: now.toISOString(),
+  };
 }
 
 /** Changes the current game's difficulty; the AI uses it from its next move. */

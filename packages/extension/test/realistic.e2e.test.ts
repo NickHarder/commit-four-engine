@@ -38,7 +38,9 @@ describe.skipIf(!canRunChromium())("browser-only mode against a caching GitHub",
   };
   const hud = () => page.locator(".commit-four-hud");
   const state = () =>
-    JSON.parse(gh.file(STATE_PATH)!) as { games: { moves: string; status: string; difficulty: string }[] };
+    JSON.parse(gh.file(STATE_PATH)!) as {
+      games: { id: number; moves: string; status: string; difficulty: string }[];
+    };
 
   beforeAll(async () => {
     buildDir = mkdtempSync(join(tmpdir(), "c4-ext-"));
@@ -97,8 +99,9 @@ describe.skipIf(!canRunChromium())("browser-only mode against a caching GitHub",
     await page.waitForFunction(
       (n) => {
         const h = document.querySelector(".commit-four-hud")?.shadowRoot?.textContent ?? "";
+        // the casual AI moves at random, so it can win early: a finished game ends a turn too
         return (
-          /Your move/.test(h) &&
+          /Your move|won game|Draw in game/.test(h) &&
           document.querySelectorAll("td.c4-cell[data-level='4'], td.c4-cell[data-level='2']").length >= n
         );
       },
@@ -134,15 +137,22 @@ describe.skipIf(!canRunChromium())("browser-only mode against a caching GitHub",
   }, 60_000);
 
   it("resigns, and the resignation survives a reload", async () => {
+    // the AI may have won the last game: start another (the panel knows before the save lands)
+    await page.waitForFunction(() => document.querySelectorAll(".c4-pending").length === 0, null, {
+      timeout: 30_000,
+    });
+    const newGame = page.getByRole("button", { name: "New game" });
+    if (await newGame.isVisible()) {
+      const games = state().games.length;
+      await newGame.click();
+      await expect.poll(() => state().games.length, { timeout: 20_000 }).toBe(games + 1);
+    }
+    const id = state().games.at(-1)!.id;
     await page.getByRole("button", { name: "Resign" }).click();
-    await hud()
-      .getByText(/You resigned game 1/)
-      .waitFor({ timeout: 15_000 });
-    await expect.poll(() => state().games[0]!.status, { timeout: 20_000 }).toBe("resigned");
+    await hud().getByText(`You resigned game ${id}`).waitFor({ timeout: 15_000 });
+    await expect.poll(() => state().games.at(-1)!.status, { timeout: 20_000 }).toBe("resigned");
     await page.reload();
-    await hud()
-      .getByText(/You resigned game 1/)
-      .waitFor({ timeout: 30_000 });
+    await hud().getByText(`You resigned game ${id}`).waitFor({ timeout: 30_000 });
   }, 90_000);
 
   it("opens Settings from the panel", async () => {

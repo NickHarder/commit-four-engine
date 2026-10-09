@@ -281,8 +281,9 @@ export class GameEngine {
 /** True when `remote` is an earlier snapshot of `desired` (same games, moves extended). */
 export function isPrefix(remote: BoardState, desired: BoardState): boolean {
   if (remote.owner !== desired.owner || remote.games.length > desired.games.length) return false;
+  // anchors may only grow (older boards get topped up)
   for (const a of remote.anchors)
-    if (!desired.anchors.some((b) => b.date === a.date && b.count === a.count)) return false;
+    if (!desired.anchors.some((b) => b.date === a.date && b.count >= a.count)) return false;
   return remote.games.every((r, i) => {
     const d = desired.games[i]!;
     const same =

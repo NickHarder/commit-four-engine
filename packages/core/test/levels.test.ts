@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { addDays } from "../src/calendar";
 import { computeLevels, levelFor, quartileBoundaries } from "../src/levels";
+import real from "./github-levels.json";
 
 function year(counts: Map<string, number>, start = "2016-01-01", days = 366) {
   return Array.from({ length: days }, (_, i) => {
@@ -9,63 +10,67 @@ function year(counts: Map<string, number>, start = "2016-01-01", days = 366) {
   });
 }
 
+type View = { days: number; h: Record<string, Record<string, number>>; order: number[] };
+
+/** Rebuilds a chronological day list from a view: values first appear in `order`. */
+function daysOf(view: View): number[] {
+  const left = new Map(Object.entries(view.h).map(([n, ls]) => [Number(n), Object.values(ls)[0]!]));
+  const out: number[] = [];
+  for (const n of view.order) {
+    out.push(n);
+    left.set(n, left.get(n)! - 1);
+  }
+  for (const [n, k] of left) for (let i = 0; i < k; i++) out.push(n);
+  return out;
+}
+
 describe("GitHub level formula", () => {
-  it("renders 2 and 4 commits as levels 2 and 4 in an otherwise empty year", () => {
+  it.each(Object.entries(real.views as Record<string, View>))(
+    "matches GitHub on a real calendar (%s)",
+    (_, view) => {
+      const days = daysOf(view);
+      expect(days).toHaveLength(view.days);
+      const bounds = quartileBoundaries(days);
+      for (const [n, levels] of Object.entries(view.h)) {
+        const level = Object.keys(levels)[0];
+        expect({ count: Number(n), level: `L${levelFor(Number(n), bounds)}` }).toEqual({
+          count: Number(n),
+          level,
+        });
+      }
+    },
+  );
+
+  it("drops the first outlier, so a nearly empty year renders every active day dark", () => {
+    // 2016 as written by version 0.1: anchor 4, then human 4s and AI 2s
     const counts = new Map([
       ["2016-01-01", 4],
       ["2016-01-16", 4],
       ["2016-01-23", 2],
     ]);
     const levels = computeLevels(year(counts));
-    expect(levels.get("2016-01-01")).toBe(4);
-    expect(levels.get("2016-01-16")).toBe(4);
-    expect(levels.get("2016-01-23")).toBe(2);
-    expect(levels.get("2016-01-24")).toBe(0);
-    expect(quartileBoundaries(year(counts).map((d) => d.count))).toEqual([0, 1, 2, 3, 4]);
-  });
-
-  it("keeps {0, 2, 4} stable as a full board fills up", () => {
-    const counts = new Map<string, number>([["2016-01-01", 4]]);
-    for (let i = 0; i < 42; i++) counts.set(addDays("2016-01-11", i * 1), i % 2 === 0 ? 4 : 2);
-    const levels = computeLevels(year(counts));
-    for (const [date, n] of counts) expect(levels.get(date)).toBe(n === 4 ? 4 : 2);
-  });
-
-  it("shows why a lone 2-commit square needs the season anchor", () => {
-    // without a 4 anywhere, the max is 2 and a 2-commit square renders at level 4
-    const levels = computeLevels(year(new Map([["2016-01-23", 2]])));
     expect(levels.get("2016-01-23")).toBe(4);
-    // and the blueprint's 150/450/600 scheme does not give two clear shades
-    const blueprint = computeLevels(
-      year(
-        new Map([
-          ["2016-01-01", 600],
-          ["2016-01-16", 450],
-          ["2016-01-23", 150],
-        ]),
-      ),
-    );
-    expect(blueprint.get("2016-01-23")).toBe(1);
-    expect(blueprint.get("2016-01-16")).toBe(3);
+    expect(levels.get("2016-01-24")).toBe(0);
   });
 
-  it("ignores the first outlier when picking the top of the scale", () => {
-    // 5+ distinct values with one huge day: the huge day is an outlier and is ignored for `top`,
-    // but still renders at level 4 because it exceeds every boundary
-    const counts = new Map<string, number>();
-    for (let i = 0; i < 60; i++) counts.set(addDays("2016-02-01", i), (i % 5) + 1);
-    counts.set("2016-06-01", 500);
-    const scores = year(counts).map((d) => d.count);
-    const bounds = quartileBoundaries(scores);
-    // top = 5 (500 ignored): mids over 1..5 are 1, 2, 3; the true max 500 is the last bound
-    expect(bounds).toEqual([0, 1, 2, 3, 500]);
-    expect(levelFor(500, bounds)).toBe(4);
-    expect(levelFor(5, bounds)).toBe(4);
-    expect(levelFor(1, bounds)).toBe(1);
+  it("separates 4 and 2 once the anchor is a value of its own", () => {
+    const counts = new Map([
+      ["2016-01-01", 14],
+      ["2016-01-16", 4],
+      ["2016-01-23", 2],
+    ]);
+    const levels = computeLevels(year(counts));
+    expect([levels.get("2016-01-01"), levels.get("2016-01-16"), levels.get("2016-01-23")]).toEqual([4, 4, 2]);
+  });
+
+  it("uses exact quarters of the top of the scale", () => {
+    expect(quartileBoundaries([0, 1, 2, 0, 0])).toEqual([0, 0.5, 1, 1.5]);
+    expect(levelFor(1, [0, 0.5, 1, 1.5])).toBe(2);
+    expect(levelFor(2, [0, 0.5, 1, 1.5])).toBe(4);
   });
 
   it("handles an all-zero range", () => {
-    expect(quartileBoundaries([0, 0, 0])).toEqual([0, 0, 0, 0, 0]);
-    expect(levelFor(0, [0, 0, 0, 0, 0])).toBe(0);
+    expect(quartileBoundaries([0, 0, 0])).toEqual([0, 0, 0, 0]);
+    expect(levelFor(0, [0, 0, 0, 0])).toBe(0);
   });
 });

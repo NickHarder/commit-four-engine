@@ -9,7 +9,7 @@ describe("contribution calendar parser", () => {
       "2016-01-01",
       "2016-12-31",
       new Map([
-        ["2016-01-01", 4],
+        ["2016-01-01", 14],
         ["2016-01-16", 4],
         ["2016-01-15", 2],
       ]),
@@ -19,7 +19,7 @@ describe("contribution calendar parser", () => {
     expect(cal.to).toBe("2016-12-31");
     expect(cal.days).toHaveLength(366);
     const byDate = new Map(cal.days.map((d) => [d.date, d]));
-    expect(byDate.get("2016-01-01")).toMatchObject({ count: 4, level: 4 });
+    expect(byDate.get("2016-01-01")).toMatchObject({ count: 14, level: 4 });
     expect(byDate.get("2016-01-15")).toMatchObject({ count: 2, level: 2 });
     expect(byDate.get("2016-01-02")).toMatchObject({ count: 0, level: 0 });
     expect(cal.privateProfile).toBe(false);

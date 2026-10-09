@@ -6,29 +6,38 @@ the original blueprint.
 ## Shading levels
 
 GitHub computes levels over **only the days currently displayed** (the rolling year, or a
-calendar year), using quartiles after dropping outliers (GitHub community #23261). The
-reverse-engineered model in [akerl/githubstats](https://github.com/akerl/githubstats/blob/main/lib/githubstats/data.rb)
-(MIT) is ported in `packages/core/src/levels.ts`:
+calendar year), using quartiles after dropping outliers (GitHub community #23261). We started
+from the reverse-engineered model in [akerl/githubstats](https://github.com/akerl/githubstats/blob/main/lib/githubstats/data.rb)
+(MIT). On 2026-10-09, 10 real views of one account (2016-2026, from nearly empty years to a busy
+rolling year) showed it is wrong for sparse years, and `packages/core/src/levels.ts` now
+implements the corrected rule, which matches all 10 (`packages/core/test/github-levels.json`):
 
 - mean and sample standard deviation over every displayed day, zeros included
-- with ≥ 5 distinct counts, values with |z| > 3.77972616981 are outliers; GitHub ignores the first 1
-  (if max − mean < 6 or max < 15) or first 3 of them, in chronological order, when picking `top`
-- boundaries are the quartile midpoints of 1..top plus the true max; a day's level is the number
-  of boundaries its count exceeds
-
-The model reproduced 103 real calendars (~37.7k days) with zero mismatches, and our port matches a
-live 2026 calendar exactly (368 days, 50 distinct counts).
+- distinct values with |z| > 3.77972616981 are outliers, in order of first appearance. This holds
+  even with few distinct counts: githubstats skipped outliers below 5 distinct counts, GitHub does
+  not
+- GitHub ignores the first 1 of them (3 when max ≥ 15 and max − mean ≥ 6) when picking `top`, the
+  largest remaining count
+- a day's level is ceil(4 × count / top), capped at 4 (githubstats used integer quartiles of
+  1..top, which differ when `top` is small); with nothing left (`top` = 0), every active day is
+  level 4
 
 Consequences:
 
-- In a year with no other activity, **2 commits → level 2 and 4 commits → level 4**. {0, 2, 4} is
-  the only three-shade set without a near-identical pair across GitHub's nine palettes (per the
-  mossaic palette study). A full game costs ≤ ~130 commits.
+- In a nearly empty year almost every active day is an outlier, so the **first value to appear is
+  dropped from the scale**. Version 0.1 put a 4-commit anchor on Jan 1, the same count as a human
+  square, so dropping it dropped every 4: the AI's 2 became the top and both players rendered at
+  level 4 (seen live on the 2016 board).
+- The fix: the Jan 1 anchor is **14 commits**, a value no square shares. It is always the first
+  and an outlier, and it stays under 15 so GitHub drops only it. `top` is then the human count:
+  human 4 → level 4, AI 2 → level 2, in every state of a season (simulated in
+  `state.test.ts`). The one exception is the AI's opening square before any human square exists
+  that year, which renders at level 4 until the human's first move lands. Older boards are topped
+  up from 4 to 14 commits on their next move.
+- {0, 2, 4} is the only three-shade set without a near-identical pair across GitHub's nine
+  palettes (per the mossaic palette study). A full game costs ≤ ~130 commits.
 - The blueprint's 600/450/150 "anchor" scheme gives levels 4/3/1, not 4/4/2; with real activity
   the 600 day is ignored as an outlier, so it anchors nothing.
-- A lone 2-commit square would render at level 4 (it would be the max), so each season gets one
-  4-commit "scale anchor" on Jan 1.
-- Avoid a busiest day of ≤ 3: with top = 2, counts 1 and 2 render as levels 3 and 4.
 
 ## What counts, and when
 

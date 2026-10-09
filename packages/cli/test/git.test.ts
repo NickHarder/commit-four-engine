@@ -56,7 +56,7 @@ describe("GitWriter", () => {
     const pieces = log.filter((c) => c.email === author.email);
     const byDay: Record<string, number> = {};
     for (const c of pieces) byDay[c.date.slice(0, 10)] = (byDay[c.date.slice(0, 10)] ?? 0) + 1;
-    expect(byDay).toEqual({ "2016-01-01": 4, "2016-02-06": 4, "2016-02-05": 2 });
+    expect(byDay).toEqual({ "2016-01-01": 14, "2016-02-06": 4, "2016-02-05": 2 });
     expect(pieces.every((c) => c.date.endsWith("T12:00:00Z") || c.date.endsWith("T12:00:00+00:00"))).toBe(
       true,
     );
@@ -102,7 +102,7 @@ describe("GitWriter", () => {
     await (await engine.newGame({ difficulty: "casual", humanFirst: true })).written;
     const log = remoteLog();
     expect(log.some((c) => c.message === "external")).toBe(true);
-    expect(log.filter((c) => c.email === author.email)).toHaveLength(4); // the anchor
+    expect(log.filter((c) => c.email === author.email)).toHaveLength(14); // the anchor
   });
 
   it("refuses repos without a sentinel", async () => {

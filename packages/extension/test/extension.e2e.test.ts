@@ -129,7 +129,11 @@ describe.skipIf(!canRun)("extension on a profile page (companion mode)", () => {
       { timeout: 10_000 },
     );
     await engine.flush();
-    expect(Object.fromEntries(countsByDate())).toEqual({ "2016-01-01": 4, "2016-02-06": 4, "2016-02-05": 2 });
+    expect(Object.fromEntries(countsByDate())).toEqual({
+      "2016-01-01": 14,
+      "2016-02-06": 4,
+      "2016-02-05": 2,
+    });
 
     // the poller sees the real counts and drops the pending outlines
     await page.waitForFunction(() => document.querySelectorAll(".c4-pending").length === 0, null, {

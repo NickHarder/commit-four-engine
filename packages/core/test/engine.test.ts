@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { GameEngine } from "../src/engine";
-import { initialState, SENTINEL_FILE, STATE_PATH } from "../src/state";
+import { planWrite } from "../src/renderPlan";
+import { applyMove, initialState, SENTINEL_FILE, STATE_PATH, startGame } from "../src/state";
 import { ApiWriter, ConflictError } from "../src/writer";
 import { FakeGitHub } from "./fakeGitHub";
 
@@ -54,7 +55,7 @@ describe("GameEngine + ApiWriter", () => {
     expect(turn.aiCol).toBe(3);
     await turn.written;
 
-    expect(countsByDate(gh, author.email)).toEqual({ "2016-01-01": 4, "2016-02-06": 4, "2016-02-05": 2 });
+    expect(countsByDate(gh, author.email)).toEqual({ "2016-01-01": 14, "2016-02-06": 4, "2016-02-05": 2 });
     const history = gh.history();
     const pieces = history.filter((c) => c.author.email === author.email);
     expect(pieces.every((c) => c.author.date.endsWith("T12:00:00+00:00"))).toBe(true);
@@ -64,6 +65,38 @@ describe("GameEngine + ApiWriter", () => {
     const state = JSON.parse(gh.file(STATE_PATH)!);
     expect(state.games[0].moves).toBe("44");
     expect(gh.file("state/board.svg")).toContain("<svg");
+  });
+
+  it("tops up a board written with the old 4-commit anchor without a conflict", async () => {
+    const { gh, writer, engine } = setup();
+    // a board as version 0.1 left it: anchor 4, one human + one AI square
+    const t = now();
+    const old = applyMove(
+      applyMove(
+        startGame(initialState(OWNER, t), { difficulty: "casual", humanFirst: true, now: t }),
+        "human",
+        3,
+        t,
+      ),
+      "ai",
+      3,
+      t,
+    );
+    old.anchors[0]!.count = 4;
+    const remote = await writer.readState();
+    await writer.write({
+      batches: planWrite(null, old),
+      pieceAuthor: author,
+      files: [{ path: STATE_PATH, content: JSON.stringify(old) }],
+      message: "c4: old board",
+      expectedHead: remote.head,
+    });
+    expect(countsByDate(gh, author.email)["2016-01-01"]).toBe(4);
+
+    await engine.load();
+    await (await engine.move(1, 2, 2)).written;
+    expect(countsByDate(gh, author.email)["2016-01-01"]).toBe(14);
+    expect(JSON.parse(gh.file(STATE_PATH)!).anchors).toEqual([{ date: "2016-01-01", count: 14 }]);
   });
 
   it("coalesces moves made while a write is in flight and stays idempotent on reload", async () => {

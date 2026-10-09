@@ -118,3 +118,4 @@ Screenshots must not show GitHub's logo prominently or imply endorsement.
 |---|---|---|
 | 0.1.0 | 2026-10-08 | First release: board overlay, local-helper and browser-only modes, Casual/Hard/Perfect AI. |
 | 0.1.1 | 2026-10-09 | Fresh GitHub reads (no "board changed elsewhere" after quick moves), working Resign and Settings, difficulty changeable mid-game, faster turns with a timing breakdown. |
+| 0.1.2 | 2026-10-09 | Your pieces and the AI's now render in two different shades (corrected shading model; the Jan 1 anchor becomes 14 commits, older boards are topped up on the next move). |

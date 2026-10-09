@@ -1,13 +1,17 @@
 /**
- * GitHub's contribution-graph shading, ported from the reverse-engineered model in
- * akerl/githubstats (MIT, lib/githubstats/data.rb). The model reproduced 103 real calendars
- * (~37.7k days) with zero mismatches in our research.
+ * GitHub's contribution-graph shading. Started from the reverse-engineered model in
+ * akerl/githubstats (MIT, lib/githubstats/data.rb), then corrected against 10 real views
+ * (one account, 2016-2026, sparse and busy years) that the original model got wrong in sparse years:
+ * - there is no "at least 5 distinct counts" condition: outliers are removed even in nearly empty
+ *   years, which is why a lone small count can render at the darkest level
+ * - the boundaries are exact quarters of `top` (a level is ceil(4 * count / top), capped at 4),
+ *   not the integer quartiles of 1..top
  *
  * The scale is computed over the days currently displayed (rolling year or one calendar year):
  * - mean and sample standard deviation over every displayed day, zeros included
- * - with >= 5 distinct counts, values whose |z| > GITHUB_MAGIC are outliers; GitHub ignores the
- *   first 1 (or 3) of them, in chronological order, when picking the top of the scale
- * - quartile boundaries are taken over 1..top, plus the true max
+ * - distinct values whose |z| > GITHUB_MAGIC are outliers, in order of first appearance
+ * - the first 1 of them (3 when the max is >= 15 and at least 6 above the mean) is ignored when
+ *   picking `top`, the largest remaining count; with nothing left, every active day is level 4
  */
 
 import type { IsoDate } from "./calendar";
@@ -21,10 +25,10 @@ export interface DayCount {
 
 export type Level = 0 | 1 | 2 | 3 | 4;
 
-/** Five ascending boundaries; a count's level is how many boundaries it strictly exceeds. */
+/** Four ascending boundaries; a count's level is how many boundaries it strictly exceeds. */
 export function quartileBoundaries(chronologicalCounts: readonly number[]): number[] {
   const scores = chronologicalCounts;
-  if (scores.length === 0) return [0, 0, 0, 0, 0];
+  if (scores.length === 0) return [0, 0, 0, 0];
   let max = 0;
   let sum = 0;
   for (const s of scores) {
@@ -33,21 +37,10 @@ export function quartileBoundaries(chronologicalCounts: readonly number[]): numb
     sum += s;
   }
   const mean = sum / scores.length;
-
   const ignored = ghOutliers(scores, mean, max);
   let top = 0;
   for (const s of scores) if (!ignored.has(s) && s > top) top = s;
-
-  // range = (1..top).to_a, or [0, 0, 0] when empty; Ruby negative indexes wrap from the end.
-  const rangeSize = top >= 1 ? top : 3;
-  const rangeAt = (i: number): number => {
-    const idx = i < 0 ? rangeSize + i : i;
-    return top >= 1 ? idx + 1 : 0;
-  };
-  const mids = [1, 2, 3].map((q) => rangeAt(Math.floor((q * rangeSize) / 4) - 1));
-  const bounds = [...new Set([...mids, max])].sort((a, b) => a - b);
-  while (bounds.length < 5) bounds.unshift(0);
-  return bounds;
+  return [0, top / 4, top / 2, (3 * top) / 4];
 }
 
 export function levelFor(count: number, bounds: readonly number[]): Level {
@@ -64,10 +57,11 @@ export function computeLevels(days: readonly DayCount[]): Map<IsoDate, Level> {
 }
 
 function ghOutliers(scores: readonly number[], mean: number, max: number): Set<number> {
-  if (new Set(scores).size < 5) return new Set();
+  if (scores.length < 2) return new Set();
   let sq = 0;
   for (const s of scores) sq += (s - mean) ** 2;
   const sd = Math.sqrt(sq / (scores.length - 1));
+  if (sd === 0) return new Set();
   const outliers: number[] = [];
   for (const s of scores) {
     if (Math.abs((mean - s) / sd) > GITHUB_MAGIC && !outliers.includes(s)) outliers.push(s);

@@ -112,7 +112,7 @@ describe.skipIf(!canRun)("extension on a profile page (browser-only mode)", () =
     const state = JSON.parse(gh.file(STATE_PATH)!);
     expect(state.games[0].moves).toMatch(/^1[1-7]$/);
     const counts = countsByDate();
-    expect(counts.get("2016-01-01")).toBe(4);
+    expect(counts.get("2016-01-01")).toBe(14);
     expect(counts.get("2016-01-16")).toBe(4); // column 1 bottom = first Saturday of slot 0
     expect([...counts.values()].filter((n) => n === 2)).toHaveLength(1); // one AI square
   }, 90_000);
