@@ -12,6 +12,10 @@ GitHub contribution graph. It is an unofficial project, not affiliated with GitH
   for the local helper. These are stored only in your
   browser's extension storage (or, for the command-line tool, in `~/.commit-four/config.json` on
   your computer, readable only by your user account).
+- **Your commit name and address**: after you sign in (or paste a token), the extension stores your
+  GitHub display name and your GitHub no-reply address (`ID+username@users.noreply.github.com`),
+  and uses them only as the author of the piece commits it writes to your own board repository,
+  so the squares count on your graph. They are stored with the settings above.
 - **Your profile's contribution graph**: on your own GitHub profile page, the extension reads the
   graph to draw the board and to check when new squares appear. When a new board year is needed,
   it also reads your graph for past years, only to find one with no contributions. This stays in
@@ -21,7 +25,8 @@ GitHub contribution graph. It is an unofficial project, not affiliated with GitH
 
 - **Signing in** talks to `github.com/login` (GitHub's device sign-in) to obtain your token.
 - In **browser mode** (the default), the extension uses your token with `api.github.com` to create
-  your board repository and write moves to it — the only repository it will write to.
+  your board repository and write moves to it — the only repository it will write to. Each move's
+  commits carry your display name and no-reply address as their author, like any commit you push.
 - In **local-helper mode**, the extension sends moves to the helper program on your own computer
   (`127.0.0.1`), which pushes them with your existing git login.
 

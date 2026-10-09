@@ -75,7 +75,7 @@ They show the real extension on a mock profile page of a fictional account (`ale
 
 | Data Type | Collected? | Transmitted Off-Device? | Purpose | Shared with Third Parties? |
 |-----------|-----------|------------------------|---------|---------------------------|
-| Personally identifiable info | No | — | — | No |
+| Personally identifiable info | Yes (your GitHub display name and no-reply commit address) | Only to api.github.com, as the author of the piece commits in your board repo | Make the squares count on your graph | No |
 | Health info | No | — | — | No |
 | Financial info | No | — | — | No |
 | Authentication info | Yes (the GitHub sign-in token, or a token / helper pairing token the user enters) | Only to github.com (sign-in), api.github.com, or the user's own computer (127.0.0.1), to make the moves the user asks for | Create the board repo and write moves to it | No |
